@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- TUnit runs on Microsoft.Testing.Platform, which requires an executable test host - unlike
+         VSTest-based frameworks (xunit/nunit), OutputType must be Exe, not the default Library. -->
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- No Microsoft.NET.Test.Sdk / coverlet: those target VSTest, which TUnit does not use. -->
+    <PackageReference Include="TUnit" Version="*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MultiClod.App\MultiClod.App.csproj" />
+  </ItemGroup>
+
+</Project>

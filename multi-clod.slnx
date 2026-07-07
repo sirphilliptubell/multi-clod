@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MultiClod.App/MultiClod.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/MultiClod.Terminal.Abstractions/MultiClod.Terminal.Abstractions.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/MultiClod.Terminal.ConPty/MultiClod.Terminal.ConPty.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/MultiClod.Terminal.Wpf/MultiClod.Terminal.Wpf.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/MultiClod.FromHere/MultiClod.FromHere.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/src/Microsoft-Terminal/">
+    <Project Path="src/Microsoft-Terminal/WpfTerminalControl/WpfTerminalControl.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MultiClod.App.Tests/MultiClod.App.Tests.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+</Solution>

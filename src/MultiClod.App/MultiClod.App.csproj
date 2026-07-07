@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <StartupObject>MultiClod.App.App</StartupObject>
+    <!-- AssemblyName/packId stay MultiClod.App (the update feed's identity for existing installs
+         must never change) - these only affect the exe's own file-properties/Task Manager display
+         name, matching the packTitle passed to vpk in Publish-MultiClodApp.ps1. -->
+    <AssemblyTitle>Multi-Clod</AssemblyTitle>
+    <Product>Multi-Clod</Product>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Empty by default so plain `dotnet build`/F5 debugging never needs MULTICLOD_DEPLOY_PATH
+         set - UpdateFeedLocation treats empty/missing as "no update source configured". Only
+         scripts\Publish-MultiClodApp.ps1 sets this, via -p:MultiClodUpdateFeedPath=..., sourced
+         from the MULTICLOD_DEPLOY_PATH environment variable that lives outside this repo. -->
+    <MultiClodUpdateFeedPath Condition="'$(MultiClodUpdateFeedPath)' == ''"></MultiClodUpdateFeedPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MultiClod.Terminal.Abstractions\MultiClod.Terminal.Abstractions.csproj" />
+    <ProjectReference Include="..\MultiClod.Terminal.Wpf\MultiClod.Terminal.Wpf.csproj" />
+
+    <!-- Not referenced from any C# here - this only makes MSBuild copy the stub's build output
+         (exe/dll/deps.json/runtimeconfig.json) into our own output directory, which is what
+         FromHereInstaller deploys from at runtime. See CLAUDE.md / the from-here plan for why this
+         project must never be referenced the other way around. -->
+    <ProjectReference Include="..\MultiClod.FromHere\MultiClod.FromHere.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\FromHereProtocol.cs" Link="FromHereProtocol.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="MultiClodUpdateFeedPath" Value="$(MultiClodUpdateFeedPath)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App.xaml can no longer be the ApplicationDefinition - that classification is what makes
+         the SDK auto-generate a Main() we need to replace with our own so VelopackApp.Build()
+         .Run() can run first (see App.xaml.cs). Reclassifying as Page keeps
+         StartupUri="MainWindow.xaml" working exactly as before; only the auto-Main disappears. -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <!-- Guards the one scenario the plain empty-default above doesn't: someone runs `dotnet
+       publish` directly (skipping the script) without realizing MULTICLOD_DEPLOY_PATH /
+       -p:MultiClodUpdateFeedPath needs to be supplied. Only fires on `publish`, so ordinary
+       build/F5 debugging is unaffected. -->
+  <Target Name="EnsureUpdateFeedPathForPublish" BeforeTargets="Publish">
+    <Error Condition="'$(MultiClodUpdateFeedPath)' == ''"
+           Text="MultiClodUpdateFeedPath is not set. Run scripts\Publish-MultiClodApp.ps1 (which sources it from the MULTICLOD_DEPLOY_PATH environment variable) instead of calling dotnet publish directly, or pass -p:MultiClodUpdateFeedPath=... explicitly." />
+  </Target>
+
+</Project>

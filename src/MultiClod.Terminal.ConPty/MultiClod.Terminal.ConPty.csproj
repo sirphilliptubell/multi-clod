@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MultiClod.Terminal.Abstractions\MultiClod.Terminal.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

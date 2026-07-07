@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- WinExe (not the default console Exe) so double-clicking or Explorer-invoking this stub
+         never flashes a console window - it has no UI of its own. -->
+    <OutputType>WinExe</OutputType>
+    <!-- Reuses MultiClod.App's own icon (rather than shipping a duplicate asset) so the
+         Explorer context menu entry - whose Icon registry value points at this exe's embedded
+         icon resource, see FromHereInstaller.RegisterVerb - looks like the rest of the app. -->
+    <ApplicationIcon>..\MultiClod.App\Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Linked, not referenced as an assembly - this stub must never depend on MultiClod.App. -->
+    <Compile Include="..\Shared\FromHereProtocol.cs" Link="FromHereProtocol.cs" />
+  </ItemGroup>
+
+</Project>

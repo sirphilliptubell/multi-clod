@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MultiClod.Terminal.Abstractions\MultiClod.Terminal.Abstractions.csproj" />
+    <ProjectReference Include="..\MultiClod.Terminal.ConPty\MultiClod.Terminal.ConPty.csproj" />
+    <ProjectReference Include="..\Microsoft-Terminal\WpfTerminalControl\WpfTerminalControl.csproj" />
+  </ItemGroup>
+
+</Project>

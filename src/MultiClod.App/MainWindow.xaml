@@ -1,0 +1,252 @@
+<Window x:Class="MultiClod.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:MultiClod.App"
+        xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
+        mc:Ignorable="d"
+        Title="Multi-Clod" Height="600" Width="1000"
+        KeyboardNavigation.DirectionalNavigation="None"
+        KeyboardNavigation.TabNavigation="None">
+    <!--
+        DirectionalNavigation/TabNavigation="None" on the Window is required, not just on
+        WpfTerminalPane's own internal container: without it, pressing an arrow key while the
+        hosted native terminal has focus makes WPF's navigation system move focus up to an
+        ancestor control instead of the terminal's native hwnd, and every subsequent keystroke
+        then silently goes nowhere.
+    -->
+    <Window.Resources>
+        <HierarchicalDataTemplate DataType="{x:Type local:ProjectNodeViewModel}" ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White" Margin="2" />
+        </HierarchicalDataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type local:SessionNodeViewModel}" ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Margin="2" ToolTip="{Binding ToolTipText}">
+                <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                    <!-- IsHollow (NotStarted/Exited/Dormant) swaps Fill for Transparent below, leaving just the Stroke outline. -->
+                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{Binding StatusBrush}"
+                             Stroke="{Binding StatusBrush}" StrokeThickness="1.5" />
+                    <!-- Rotating dashed ring stands in for the dot while the session is Starting - see the IsStarting trigger below. -->
+                    <Ellipse x:Name="StatusSpinner" Width="10" Height="10" Visibility="Collapsed"
+                             Stroke="Goldenrod" StrokeThickness="1.5" StrokeDashArray="2 1.5"
+                             RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform x:Name="StatusSpinnerRotate" Angle="0" />
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                </Grid>
+                <TextBlock x:Name="SessionNameText" Text="{Binding Name}" Foreground="White" VerticalAlignment="Center" />
+            </StackPanel>
+            <HierarchicalDataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsInvalid}" Value="True">
+                    <Setter TargetName="SessionNameText" Property="TextDecorations" Value="Strikethrough" />
+                    <Setter TargetName="SessionNameText" Property="Foreground" Value="Gray" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsHollow}" Value="True">
+                    <Setter TargetName="StatusDot" Property="Fill" Value="Transparent" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsStarting}" Value="True">
+                    <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="StatusSpinner" Property="Visibility" Value="Visible" />
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Name="SpinnerStoryboard">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="StatusSpinnerRotate" Storyboard.TargetProperty="Angle"
+                                                 From="0" To="360" Duration="0:0:0.9" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="SpinnerStoryboard" />
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </HierarchicalDataTemplate.Triggers>
+        </HierarchicalDataTemplate>
+
+        <!--
+            Drag/drop is wired on every TreeViewItem via this shared style, AND separately on the
+            Tree element itself in the TreeView tag below (see OnTreeDragOver/OnTreeDrop) - a
+            TreeView's rows don't fill its whole bounds, so a drop below the last item routes to
+            the TreeView, not any TreeViewItem. Because DragOver/Drop are bubbling routed events, a
+            drop that lands on an actual row is handled by that row's own handler first, which
+            marks e.Handled = true so the Tree-level handler only ever fires for genuine
+            empty-area drops - no manual hit-testing needed to tell the two cases apart.
+
+            IsSelected/IsExpanded are TwoWay so code (e.g. MainWindow.HandleFromHereRequest) can
+            select/expand a node by setting the view model, and WPF applies it whenever that
+            node's container materializes - no polling ItemContainerGenerator for a container that
+            may not exist yet.
+        -->
+        <Style TargetType="TreeViewItem">
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <EventSetter Event="Selected" Handler="OnItemSelected" />
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnItemPreviewMouseLeftButtonDown" />
+            <EventSetter Event="PreviewMouseMove" Handler="OnItemPreviewMouseMove" />
+            <Setter Property="AllowDrop" Value="True" />
+            <EventSetter Event="DragOver" Handler="OnItemDragOver" />
+            <EventSetter Event="Drop" Handler="OnItemDrop" />
+            <!--
+                Full retemplate rather than a resource-key override: the default (Aero2) template
+                pulls its expand/collapse glyph style via a StaticResource lookup that's resolved
+                inside the theme's own dictionary, so an app-level resource of the same key is
+                never seen. Re-declaring the whole template is the only way to force the glyph's
+                color - this copies the stock Aero2 layout/selection triggers verbatim and only
+                replaces the ToggleButton's glyph style with a fixed LimeGreen triangle (matching
+                the running-session status dot color) instead of the stock dark/hover-only colors.
+            -->
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition MinWidth="19" Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+                            <ToggleButton x:Name="Expander" ClickMode="Press"
+                                          IsChecked="{Binding Path=IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Width" Value="16" />
+                                        <Setter Property="Height" Value="16" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Border Background="Transparent" Height="16" Padding="5" Width="16">
+                                                        <Path x:Name="ExpandPath" Data="M0,0L0,6L6,0z"
+                                                              Fill="LimeGreen" Stroke="LimeGreen">
+                                                            <Path.RenderTransform>
+                                                                <RotateTransform Angle="135" CenterX="3" CenterY="3" />
+                                                            </Path.RenderTransform>
+                                                        </Path>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsChecked" Value="True">
+                                                            <Setter Property="RenderTransform" TargetName="ExpandPath">
+                                                                <Setter.Value>
+                                                                    <RotateTransform Angle="180" CenterX="3" CenterY="3" />
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ToggleButton.Style>
+                            </ToggleButton>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    Grid.Column="1" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                <ContentPresenter x:Name="PART_Header" ContentSource="Header"
+                                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                   SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter Property="Visibility" TargetName="ItemsHost" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter Property="Visibility" TargetName="Expander" Value="Hidden" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" TargetName="Bd" Value="{DynamicResource {x:Static sys:SystemColors.HighlightBrushKey}}" />
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static sys:SystemColors.HighlightTextBrushKey}}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="IsSelectionActive" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter Property="Background" TargetName="Bd" Value="{DynamicResource {x:Static sys:SystemColors.ControlBrushKey}}" />
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static sys:SystemColors.ControlTextBrushKey}}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static sys:SystemColors.GrayTextBrushKey}}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- BorderThickness starts at 0 (invisible) - MainWindow's ctor sets it to a visible red
+         border under #if DEBUG, since XAML itself can't be conditionally compiled. -->
+    <Border x:Name="DebugBorder" BorderBrush="Red" BorderThickness="0">
+    <Grid Background="Black">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="TreeColumn" Width="220" MinWidth="120" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" MinWidth="200" />
+        </Grid.ColumnDefinitions>
+
+        <TreeView x:Name="Tree" Grid.Column="0" Background="#1E1E1E" BorderThickness="0"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  AllowDrop="True"
+                  SelectedItemChanged="OnTreeSelectedItemChanged"
+                  KeyDown="OnTreeKeyDown"
+                  MouseRightButtonDown="OnTreeMouseRightButtonDown"
+                  ContextMenuOpening="OnTreeContextMenuOpening"
+                  DragOver="OnTreeDragOver"
+                  Drop="OnTreeDrop">
+            <TreeView.Resources>
+                <!-- Focused-selected row: echoes the terminal pane's own text-selection accent (SessionTheme.SelectionBackground = #3A96DD) for visual consistency. -->
+                <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
+                <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+
+                <!--
+                    Unfocused-selected row: Aero2's TreeViewItem template (unlike ListBoxItem) uses
+                    ControlBrushKey/ControlTextBrushKey for this state rather than the newer
+                    InactiveSelectionHighlight* keys, so both pairs are overridden defensively - an
+                    unused pair is a harmless no-op. Without this, an unfocused selected row falls
+                    back to plain light gray behind hardcoded white text, which is illegible - and
+                    the tree is frequently unfocused since the hosted terminal control constantly
+                    steals keyboard focus.
+                -->
+                <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
+                <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
+                <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="#284861" />
+                <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="White" />
+            </TreeView.Resources>
+            <TreeView.ContextMenu>
+                <ContextMenu x:Name="TreeContextMenu" />
+            </TreeView.ContextMenu>
+        </TreeView>
+
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      Background="#1E1E1E" ResizeBehavior="PreviousAndNext" />
+
+        <Grid Grid.Column="2">
+            <!--
+                Shown whenever the current selection isn't a running session (nothing selected, a
+                Project selected, or a dormant session before it's launched/validated). Always
+                present, never removed - only Visibility toggles, same rule as the session panes
+                below.
+            -->
+            <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="Gray"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+            <!-- Shown instead of launching when the selected dormant session fails validation. -->
+            <TextBlock x:Name="ErrorText" Foreground="OrangeRed" TextWrapping="Wrap" MaxWidth="500"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+
+            <!--
+                Every running session's Pane.View is added here exactly once, permanently, for
+                that host's entire lifetime. Selection only ever toggles Visibility - never swap
+                Content/Children membership for a live view. See the comment in
+                MainWindow.LaunchSession for why.
+            -->
+            <Grid x:Name="SessionViewHost" />
+        </Grid>
+    </Grid>
+    </Border>
+</Window>
