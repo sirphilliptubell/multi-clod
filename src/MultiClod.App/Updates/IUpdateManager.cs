@@ -18,4 +18,6 @@ public interface IUpdateManager {
 	VelopackAsset? UpdatePendingRestart { get; }
 
 	void WaitExitThenApplyUpdates(VelopackAsset? toApply, bool silent, bool restart, string[]? restartArgs = null);
+
+	SemanticVersion? CurrentVersion { get; }
 }

@@ -36,6 +36,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Loadable as a pack URI (see SplashWindow.xaml) - ApplicationIcon above only feeds the
+         exe's own file icon resource, it doesn't make app.ico/app.png usable from an Image control. -->
+    <Resource Include="Assets\app.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 

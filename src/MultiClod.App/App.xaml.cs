@@ -1,4 +1,5 @@
 using MultiClod.App.FromHere;
+using MultiClod.App.Splash;
 using MultiClod.App.Updates;
 using MultiClod.Shared;
 using System.IO;
@@ -59,6 +60,13 @@ public partial class App : Application {
 	/// </summary>
 	public FromHereRequestQueue FromHereRequests { get; } = new();
 
+	/// <summary>
+	/// Exposed so MainWindow can reflect <see cref="AppUpdateCoordinator.StatusChanged"/> in the
+	/// title bar - null only when constructed with a null manager, e.g. no feed configured (a plain
+	/// local debug build) or before OnStartup has run at all.
+	/// </summary>
+	public AppUpdateCoordinator? UpdateCoordinator => this.updateCoordinator;
+
 	protected override void OnStartup(StartupEventArgs e) {
 		this.DispatcherUnhandledException += this.OnDispatcherUnhandledException;
 
@@ -79,6 +87,13 @@ public partial class App : Application {
 
 		this.updateCoordinator = AppUpdateCoordinator.CreateForRuntime();
 
+		// Own dedicated thread/Dispatcher (see StartupSplash) - MainWindow doesn't exist yet
+		// (StartupUri only creates it once base.OnStartup runs below), so without this the user
+		// sees nothing at all for however long the synchronous check/download beneath it takes.
+		var splash = new StartupSplash();
+		void OnStartupStatusChanged(AppUpdateStatus status) => splash.UpdateStatus(status.Describe());
+		this.updateCoordinator.StatusChanged += OnStartupStatusChanged;
+
 		// Runs before the pipe server / from-here install start, and before base.OnStartup
 		// creates MainWindow - no reason to spin those up if we're about to exit and relaunch
 		// into a newer version anyway.
@@ -91,7 +106,9 @@ public partial class App : Application {
 				.GetAwaiter().GetResult();
 			if (isRestarting) {
 				this.singleInstanceMutex?.Dispose();
-				return; // process is already exiting inside RunStartupCheckAndApplyIfFound
+				return; // process is already exiting inside RunStartupCheckAndApplyIfFound - the
+				// splash is left showing its last status ("Downloading updates") until the process
+				// actually exits a moment later.
 			}
 		}
 		catch {
@@ -99,6 +116,8 @@ public partial class App : Application {
 		}
 		finally {
 			startupUpdateGate.EndCheck();
+			this.updateCoordinator.StatusChanged -= OnStartupStatusChanged;
+			splash.Close();
 		}
 
 		// Posted synchronously, before the dispatcher ever pumps a pipe-driven Post below, so this

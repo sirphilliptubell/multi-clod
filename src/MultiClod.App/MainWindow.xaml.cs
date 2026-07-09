@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
+using MultiClod.App.Updates;
 using MultiClod.App.Validation;
 using MultiClod.Terminal.Abstractions;
 using MultiClod.Terminal.Wpf;
@@ -33,6 +34,15 @@ public partial class MainWindow : Window
     private readonly WindowLayoutStore layoutStore;
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
+
+    // Title as set by the ctor (includes the "(Debug)" suffix), before any update-status suffix -
+    // see OnUpdateStatusChanged. Captured once rather than stripping a suffix back off later.
+    private readonly string baseTitle;
+
+    // Set in OnLoaded (mirrors app.FromHereRequests.Attach/Detach), so OnClosing can unsubscribe
+    // the same delegate instance - AppUpdateCoordinator outlives this window's lifetime (it's owned
+    // by App), so a leaked subscription would otherwise keep this window alive too.
+    private AppUpdateCoordinator? updateCoordinator;
 
     // Set only from OnTreeMouseRightButtonDown (always fires before ContextMenuOpening for a
     // mouse-triggered open), so the context menu targets the row that was actually clicked
@@ -63,6 +73,17 @@ public partial class MainWindow : Window
         this.Title += " (Debug)";
         this.DebugBorder.BorderThickness = new Thickness(4);
 #endif
+
+        // Application.Current is already this running App by now - App.OnStartup constructs
+        // UpdateCoordinator and only calls base.OnStartup (which creates this window, via
+        // StartupUri) afterward. Null in any unpublished/local build (no update feed baked in - see
+        // UpdateFeedLocation), so plain debug/F5 runs show no version.
+        if ((Application.Current as App)?.UpdateCoordinator?.CurrentVersionText is { } version)
+        {
+            this.Title += $" v{version}";
+        }
+
+        this.baseTitle = this.Title;
 
         this.store = new SessionStore();
         this.controller = new SessionTreeController(this.store);
@@ -99,7 +120,29 @@ public partial class MainWindow : Window
         if (Application.Current is App app)
         {
             app.FromHereRequests.Attach(this.HandleFromHereRequest);
+
+            this.updateCoordinator = app.UpdateCoordinator;
+            if (this.updateCoordinator is not null)
+            {
+                this.updateCoordinator.StatusChanged += this.OnUpdateStatusChanged;
+
+                // Covers the status the startup check already settled into (CheckingForUpdates
+                // never actually observed here - that check runs synchronously in App.OnStartup,
+                // before this window exists) - without this, the title would stay plain until the
+                // periodic timer's first tick five minutes later.
+                if (this.updateCoordinator.Status is { } currentStatus)
+                {
+                    this.OnUpdateStatusChanged(currentStatus);
+                }
+            }
         }
+    }
+
+    // AppUpdateCoordinator.SetStatus already marshals onto the UI dispatcher, so this always runs
+    // on the UI thread.
+    private void OnUpdateStatusChanged(AppUpdateStatus status)
+    {
+        this.Title = $"{this.baseTitle} ({status.Describe()})";
     }
 
     private void LaunchSession(SessionNodeViewModel node)
@@ -601,6 +644,11 @@ public partial class MainWindow : Window
         if (Application.Current is App app)
         {
             app.FromHereRequests.Detach();
+        }
+
+        if (this.updateCoordinator is not null)
+        {
+            this.updateCoordinator.StatusChanged -= this.OnUpdateStatusChanged;
         }
 
         // Captured before disposing - IsRunning/LiveSession can change once hosts are disposed.

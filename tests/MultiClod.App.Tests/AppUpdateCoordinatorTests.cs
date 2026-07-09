@@ -112,6 +112,8 @@ public sealed class AppUpdateCoordinatorTests
 
         public VelopackAsset? UpdatePendingRestart { get; set; }
 
+        public SemanticVersion? CurrentVersion { get; set; }
+
         public int DownloadUpdatesCallCount { get; private set; }
 
         public int ApplyUpdatesAndRestartCallCount { get; private set; }

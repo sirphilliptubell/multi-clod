@@ -23,6 +23,8 @@ internal sealed class VelopackUpdateManagerAdapter : IUpdateManager {
 
 	public VelopackAsset? UpdatePendingRestart => this.inner.UpdatePendingRestart;
 
+	public SemanticVersion? CurrentVersion => this.inner.CurrentVersion;
+
 	public void WaitExitThenApplyUpdates(VelopackAsset? toApply, bool silent, bool restart, string[]? restartArgs = null) =>
 		this.inner.WaitExitThenApplyUpdates(toApply, silent, restart, restartArgs);
 }
