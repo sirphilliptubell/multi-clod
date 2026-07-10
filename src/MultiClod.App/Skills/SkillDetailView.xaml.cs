@@ -1,7 +1,10 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace MultiClod.App.Skills;
 
@@ -76,9 +79,87 @@ public partial class SkillDetailView : UserControl
         return true;
     }
 
+    // Markdig.Wpf's default styles (App.xaml's generic.xaml merge) set Foreground on each block
+    // (heading/paragraph) style rather than relying on inheritance, so setting it once on the
+    // FlowDocument itself doesn't cascade - those per-block style values win over it. Overriding
+    // Foreground as a local value on every block instead beats the style setter.
+    private static readonly Brush MarkdownForeground =
+        (Brush)new BrushConverter().ConvertFromString("#FFDCDCDC")!;
+
+    // Code spans/blocks (Markdig's CodeStyleKey / CodeBlockStyleKey) only set their own light
+    // Background, relying on inheritance for Foreground - previously that inherited the document's
+    // default black, giving readable dark-on-light. Now that everything else gets an explicit light
+    // Foreground of its own, that would inherit into code areas too and make the text invisible
+    // against their own light Background, so anything with its own Background needs this forced
+    // dark Foreground instead.
+    private static readonly Brush CodeForeground =
+        (Brush)new BrushConverter().ConvertFromString("#FF1E1E1E")!;
+
     private void RenderMarkdown(string rawText)
     {
-        this.MarkdownViewer.Document = Markdig.Wpf.Markdown.ToFlowDocument(rawText);
+        var document = Markdig.Wpf.Markdown.ToFlowDocument(rawText);
+        document.Foreground = MarkdownForeground;
+        ApplyForegroundToBlocks(document.Blocks, insideOwnBackground: false);
+        this.MarkdownViewer.Document = document;
+    }
+
+    // Fenced code blocks put the Background on an outer Section, not on the Paragraph(s) inside it,
+    // so checking Background only on the element being visited isn't enough - insideOwnBackground
+    // propagates down through the whole subtree once any ancestor is found to carry its own
+    // Background, so everything inside consistently gets the dark, code-appropriate Foreground.
+    private static void ApplyForegroundToBlocks(IEnumerable<Block> blocks, bool insideOwnBackground)
+    {
+        foreach (var block in blocks)
+        {
+            var ownBackground = insideOwnBackground || block.Background is not null;
+            block.Foreground = ownBackground ? CodeForeground : MarkdownForeground;
+
+            switch (block)
+            {
+                case Paragraph paragraph:
+                    ApplyForegroundToInlines(paragraph.Inlines, ownBackground);
+                    break;
+                case Section section:
+                    ApplyForegroundToBlocks(section.Blocks, ownBackground);
+                    break;
+                case List list:
+                    foreach (var item in list.ListItems)
+                    {
+                        ApplyForegroundToBlocks(item.Blocks, ownBackground);
+                    }
+                    break;
+                case Table table:
+                    foreach (var rowGroup in table.RowGroups)
+                    {
+                        foreach (var row in rowGroup.Rows)
+                        {
+                            foreach (var cell in row.Cells)
+                            {
+                                var cellOwnBackground = ownBackground || cell.Background is not null;
+                                cell.Foreground = cellOwnBackground ? CodeForeground : MarkdownForeground;
+                                ApplyForegroundToBlocks(cell.Blocks, cellOwnBackground);
+                            }
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    private static void ApplyForegroundToInlines(IEnumerable<Inline> inlines, bool insideOwnBackground)
+    {
+        foreach (var inline in inlines)
+        {
+            if (!insideOwnBackground && inline.Background is not null)
+            {
+                inline.Foreground = CodeForeground;
+            }
+
+            if (inline is Span span)
+            {
+                ApplyForegroundToInlines(span.Inlines, insideOwnBackground);
+            }
+        }
     }
 
     private void SetEditMode(bool editing)
