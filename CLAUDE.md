@@ -1,10 +1,12 @@
 # multi-clod
 
 A WPF desktop app (`MultiClod.App`) with a rail/panel/canvas layout: a narrow icon rail on the far
-left, a panel next to it that manages a tree of projects/sessions, and a canvas that hosts embedded
-Claude Code CLI sessions (via a vendored Microsoft terminal control) on the right. Releases are
-packaged with Velopack (`vpk`) and pushed to a network-share update feed that running instances
-auto-update from.
+left selects between features - Sessions (a panel managing a tree of projects/sessions, with a
+canvas hosting embedded Claude Code CLI sessions via a vendored Microsoft terminal control) and
+Skills (a panel listing personal Claude Code skills from `~/.claude/skills`, with a canvas that
+renders the selected skill's `SKILL.md` and can switch to a raw-text editor). Releases are packaged
+with Velopack (`vpk`) and pushed to a network-share update feed that running instances auto-update
+from.
 
 ## Deploy shortcuts
 

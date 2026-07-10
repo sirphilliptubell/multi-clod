@@ -4,6 +4,12 @@
              xmlns:local="clr-namespace:MultiClod.App"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Default styles (headings, code blocks, etc.) for FlowDocuments produced by
+                     Markdig.Wpf.Markdown.ToFlowDocument - see Skills\SkillDetailView.xaml.cs. -->
+                <ResourceDictionary Source="pack://application:,,,/Markdig.Wpf;component/Themes/generic.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

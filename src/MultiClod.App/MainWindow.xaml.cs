@@ -1,5 +1,7 @@
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -12,6 +14,7 @@ using Microsoft.Win32;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
+using MultiClod.App.Skills;
 using MultiClod.App.Updates;
 using MultiClod.App.Validation;
 using MultiClod.Terminal.Abstractions;
@@ -62,6 +65,23 @@ public partial class MainWindow : Window
     private TreeNodeViewModel? dragStartNode;
 
     private enum DropPosition { Before, Into, After }
+
+    // Which of Tree/SkillsList (Panel) and the corresponding canvas content is currently visible -
+    // see SetRailSection.
+    private RailSection currentRailSection = RailSection.Sessions;
+
+    // Populated on first click of the Skills rail icon; null means "not scanned yet this run" -
+    // see EnsureSkillsLoaded. Skills are only rescanned on the next app launch, not live.
+    private ObservableCollection<SkillNodeViewModel>? skillNodes;
+
+    // Set while OnSkillsListSelectionChanged is itself reverting a rejected selection change
+    // (user declined to discard a dirty edit), so that reversion doesn't recursively re-trigger
+    // the same dirty-check - mirrors suppressSelectionSideEffects's role for the Tree above.
+    private bool suppressSkillsSelectionSideEffects;
+
+    // Set only from OnSkillsListMouseRightButtonDown (always fires before ContextMenuOpening for
+    // a mouse-triggered open), mirroring rightClickedNode's role for the Tree above.
+    private SkillNodeViewModel? rightClickedSkill;
 
     public MainWindow()
     {
@@ -259,6 +279,145 @@ public partial class MainWindow : Window
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.PlaceholderText.Visibility = Visibility.Visible;
         }
+    }
+
+    private void OnSessionsRailIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetRailSection(RailSection.Sessions);
+    }
+
+    private void OnSkillsRailIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetRailSection(RailSection.Skills);
+    }
+
+    private void SetRailSection(RailSection section)
+    {
+        if (this.currentRailSection == section)
+        {
+            return;
+        }
+
+        // Leaving Skills with an unsaved edit needs the same discard-confirmation as switching to
+        // a different skill within the panel - see SkillDetailView.TryNavigateAway.
+        if (this.currentRailSection == RailSection.Skills && !this.SkillDetail.TryNavigateAway())
+        {
+            return;
+        }
+
+        this.currentRailSection = section;
+
+        this.SessionsAccentBar.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
+        this.SkillsAccentBar.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.Tree.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
+        this.SkillsList.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+
+        if (section == RailSection.Skills)
+        {
+            // SessionViewHost's children are never hidden as a whole - only whichever pane
+            // OnTreeSelectedItemChanged last made Visible - so that pane needs hiding explicitly
+            // here; it's naturally re-shown by the replayed OnTreeSelectedItemChanged below when
+            // switching back.
+            this.HideActiveSessionPane();
+            this.EnsureSkillsLoaded();
+            this.RefreshSkillsCanvas();
+        }
+        else
+        {
+            this.SkillDetail.Visibility = Visibility.Collapsed;
+
+            // oldValue is deliberately null - HideActiveSessionPane already hid whatever pane was
+            // active before switching away from Sessions, so there's nothing left for
+            // OnTreeSelectedItemChanged's own e.OldValue handling to hide again.
+            this.OnTreeSelectedItemChanged(this, new RoutedPropertyChangedEventArgs<object>(null!, this.Tree.SelectedItem));
+        }
+    }
+
+    private void HideActiveSessionPane()
+    {
+        if (this.Tree.SelectedItem is SessionNodeViewModel { LiveSession: { } session })
+        {
+            session.Host.Pane.View.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void EnsureSkillsLoaded()
+    {
+        if (this.skillNodes is not null)
+        {
+            return;
+        }
+
+        var skills = new SkillDiscoveryService().ScanPersonalSkills();
+        this.skillNodes = new ObservableCollection<SkillNodeViewModel>(skills.Select(s => new SkillNodeViewModel(s)));
+        this.SkillsList.ItemsSource = this.skillNodes;
+    }
+
+    private void OnSkillsListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressSkillsSelectionSideEffects)
+        {
+            return;
+        }
+
+        if (e.RemovedItems.Count > 0 && !this.SkillDetail.TryNavigateAway())
+        {
+            this.suppressSkillsSelectionSideEffects = true;
+            this.SkillsList.SelectedItem = e.RemovedItems[0];
+            this.suppressSkillsSelectionSideEffects = false;
+            return;
+        }
+
+        this.RefreshSkillsCanvas();
+    }
+
+    private void RefreshSkillsCanvas()
+    {
+        if (this.SkillsList.SelectedItem is SkillNodeViewModel node)
+        {
+            this.PlaceholderText.Visibility = Visibility.Collapsed;
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.SkillDetail.Visibility = Visibility.Visible;
+            this.SkillDetail.LoadSkill(node.Info);
+        }
+        else
+        {
+            this.SkillDetail.Visibility = Visibility.Collapsed;
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.PlaceholderText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void OnSkillsListMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        this.rightClickedSkill = item?.DataContext as SkillNodeViewModel;
+
+        if (item is not null && !item.IsSelected)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    private void OnSkillsListContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.SkillsContextMenu.Items.Clear();
+
+        if (this.rightClickedSkill is { } skill)
+        {
+            this.SkillsContextMenu.Items.Add(CreateMenuItem("Explore to", () => OpenContainingFolder(skill.Info.FilePath)));
+        }
+    }
+
+    private static void OpenContainingFolder(string skillFilePath)
+    {
+        var folder = Path.GetDirectoryName(skillFilePath);
+        if (folder is null)
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
     }
 
     private void OnTreeKeyDown(object sender, KeyEventArgs e)

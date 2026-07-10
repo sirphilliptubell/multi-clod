@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MultiClod.App"
+        xmlns:skills="clr-namespace:MultiClod.App.Skills"
         xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="Multi-Clod" Height="600" Width="1000"
@@ -191,18 +192,17 @@
         </Grid.ColumnDefinitions>
 
         <!--
-            Rail: icon strip for major features. Only one feature (session management)
-            exists today, so there's exactly one item and it has no click handler - it
-            always represents the Panel to its right, which always stays visible. If a
-            second rail icon is ever added, that's when real selection/toggle behavior
-            (swapping which panel is shown, collapsing the panel) should be introduced -
-            not before, since there's nothing to switch between yet.
+            Rail: icon strip for major features. Each item's accent bar Visibility and the
+            corresponding Panel/canvas content are driven from code-behind by
+            MainWindow.SetRailSection (see RailSection) - MouseLeftButtonDown on each icon
+            Grid calls into it.
         -->
         <Border Grid.Column="0" Background="#181818" BorderBrush="Black" BorderThickness="0,0,1,0">
             <StackPanel>
-                <Grid Width="48" Height="48" Margin="0,8,0,0">
+                <Grid x:Name="SessionsRailIcon" Width="48" Height="48" Margin="0,8,0,0"
+                      MouseLeftButtonDown="OnSessionsRailIconClick">
                     <!-- Accent bar marks this item as the one owning the currently visible Panel. -->
-                    <Border Width="3" HorizontalAlignment="Left" Background="#3A96DD" />
+                    <Border x:Name="SessionsAccentBar" Width="3" HorizontalAlignment="Left" Background="#3A96DD" />
                     <Border Width="32" Height="32" Background="#2D2D30" CornerRadius="4">
                         <!-- Single sunburst petal-flower, echoing the coral bursts in Assets/app.png (the app's own icon) at one-third scale. -->
                         <Canvas Width="24" Height="24">
@@ -224,41 +224,81 @@
                         </Canvas>
                     </Border>
                 </Grid>
+
+                <Grid x:Name="SkillsRailIcon" Width="48" Height="48"
+                      MouseLeftButtonDown="OnSkillsRailIconClick">
+                    <Border x:Name="SkillsAccentBar" Width="3" HorizontalAlignment="Left" Background="#3A96DD" Visibility="Collapsed" />
+                    <Border Width="32" Height="32" Background="#2D2D30" CornerRadius="4">
+                        <!-- Simple document/sheet glyph (rounded card + three ruled lines) for the Skills panel. -->
+                        <Canvas Width="24" Height="24">
+                            <Border Width="16" Height="20" Canvas.Left="4" Canvas.Top="2" CornerRadius="2" Background="#3AA0E2" />
+                            <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="7" Fill="#1E1E1E" />
+                            <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="11" Fill="#1E1E1E" />
+                            <Rectangle Width="6" Height="1.5" Canvas.Left="7" Canvas.Top="15" Fill="#1E1E1E" />
+                        </Canvas>
+                    </Border>
+                </Grid>
             </StackPanel>
         </Border>
 
-        <TreeView x:Name="Tree" Grid.Column="1" Background="#1E1E1E" BorderThickness="0"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                  AllowDrop="True"
-                  SelectedItemChanged="OnTreeSelectedItemChanged"
-                  KeyDown="OnTreeKeyDown"
-                  MouseRightButtonDown="OnTreeMouseRightButtonDown"
-                  ContextMenuOpening="OnTreeContextMenuOpening"
-                  DragOver="OnTreeDragOver"
-                  Drop="OnTreeDrop">
-            <TreeView.Resources>
-                <!-- Focused-selected row: echoes the terminal pane's own text-selection accent (SessionTheme.SelectionBackground = #3A96DD) for visual consistency. -->
-                <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
-                <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+        <Grid Grid.Column="1">
+            <TreeView x:Name="Tree" Background="#1E1E1E" BorderThickness="0"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      AllowDrop="True"
+                      SelectedItemChanged="OnTreeSelectedItemChanged"
+                      KeyDown="OnTreeKeyDown"
+                      MouseRightButtonDown="OnTreeMouseRightButtonDown"
+                      ContextMenuOpening="OnTreeContextMenuOpening"
+                      DragOver="OnTreeDragOver"
+                      Drop="OnTreeDrop">
+                <TreeView.Resources>
+                    <!-- Focused-selected row: echoes the terminal pane's own text-selection accent (SessionTheme.SelectionBackground = #3A96DD) for visual consistency. -->
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
 
-                <!--
-                    Unfocused-selected row: Aero2's TreeViewItem template (unlike ListBoxItem) uses
-                    ControlBrushKey/ControlTextBrushKey for this state rather than the newer
-                    InactiveSelectionHighlight* keys, so both pairs are overridden defensively - an
-                    unused pair is a harmless no-op. Without this, an unfocused selected row falls
-                    back to plain light gray behind hardcoded white text, which is illegible - and
-                    the tree is frequently unfocused since the hosted terminal control constantly
-                    steals keyboard focus.
-                -->
-                <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
-                <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
-                <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="#284861" />
-                <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="White" />
-            </TreeView.Resources>
-            <TreeView.ContextMenu>
-                <ContextMenu x:Name="TreeContextMenu" />
-            </TreeView.ContextMenu>
-        </TreeView>
+                    <!--
+                        Unfocused-selected row: Aero2's TreeViewItem template (unlike ListBoxItem) uses
+                        ControlBrushKey/ControlTextBrushKey for this state rather than the newer
+                        InactiveSelectionHighlight* keys, so both pairs are overridden defensively - an
+                        unused pair is a harmless no-op. Without this, an unfocused selected row falls
+                        back to plain light gray behind hardcoded white text, which is illegible - and
+                        the tree is frequently unfocused since the hosted terminal control constantly
+                        steals keyboard focus.
+                    -->
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="#284861" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="White" />
+                </TreeView.Resources>
+                <TreeView.ContextMenu>
+                    <ContextMenu x:Name="TreeContextMenu" />
+                </TreeView.ContextMenu>
+            </TreeView>
+
+            <!-- Skills panel: a flat list of personal skills (~/.claude/skills/*/SKILL.md), populated
+                 in code-behind by MainWindow.EnsureSkillsLoaded. Mutually exclusive with Tree via
+                 Visibility, same convention as the canvas's own children below. -->
+            <ListBox x:Name="SkillsList" Background="#1E1E1E" BorderThickness="0"
+                     Visibility="Collapsed"
+                     SelectionChanged="OnSkillsListSelectionChanged"
+                     MouseRightButtonDown="OnSkillsListMouseRightButtonDown"
+                     ContextMenuOpening="OnSkillsListContextMenuOpening">
+                <ListBox.ContextMenu>
+                    <ContextMenu x:Name="SkillsContextMenu" />
+                </ListBox.ContextMenu>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White" />
+                            <!-- Description is left plain (no visibility converter for the null/empty
+                                 case) - an empty TextBlock with no MinHeight collapses to zero height
+                                 visually, so there's no blank gap worth the extra converter class. -->
+                            <TextBlock Text="{Binding Description}" Foreground="Gray" FontSize="11" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
 
         <GridSplitter Grid.Column="2" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                       Background="#1E1E1E" ResizeBehavior="PreviousAndNext" />
@@ -266,9 +306,9 @@
         <Grid Grid.Column="3">
             <!--
                 Shown whenever the current selection isn't a running session (nothing selected, a
-                Project selected, or a dormant session before it's launched/validated). Always
-                present, never removed - only Visibility toggles, same rule as the session panes
-                below.
+                Project selected, or a dormant session before it's launched/validated) and no skill
+                is selected either. Always present, never removed - only Visibility toggles, same
+                rule as the session panes and SkillDetail below.
             -->
             <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="Gray"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -284,6 +324,9 @@
                 MainWindow.LaunchSession for why.
             -->
             <Grid x:Name="SessionViewHost" />
+
+            <!-- Rendered/edited SKILL.md for the currently selected skill - see Skills\SkillDetailView. -->
+            <skills:SkillDetailView x:Name="SkillDetail" Visibility="Collapsed" />
         </Grid>
     </Grid>
     </Border>
