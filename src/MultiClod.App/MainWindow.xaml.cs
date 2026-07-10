@@ -79,10 +79,6 @@ public partial class MainWindow : Window
     // the same dirty-check - mirrors suppressSelectionSideEffects's role for the Tree above.
     private bool suppressSkillsSelectionSideEffects;
 
-    // Set only from OnSkillsListMouseRightButtonDown (always fires before ContextMenuOpening for
-    // a mouse-triggered open), mirroring rightClickedNode's role for the Tree above.
-    private SkillNodeViewModel? rightClickedSkill;
-
     public MainWindow()
     {
         this.InitializeComponent();
@@ -391,7 +387,6 @@ public partial class MainWindow : Window
     private void OnSkillsListMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-        this.rightClickedSkill = item?.DataContext as SkillNodeViewModel;
 
         if (item is not null && !item.IsSelected)
         {
@@ -403,7 +398,12 @@ public partial class MainWindow : Window
     {
         this.SkillsContextMenu.Items.Clear();
 
-        if (this.rightClickedSkill is { } skill)
+        // Read the selection directly rather than tracking the right-clicked item in a field (as
+        // the Tree does for its own context menu): selection is forced above in
+        // OnSkillsListMouseRightButtonDown before this fires, so SelectedItem is already correct,
+        // and a field-based version of this was observed going through empty here for reasons that
+        // didn't reproduce under static inspection.
+        if (this.SkillsList.SelectedItem is SkillNodeViewModel skill)
         {
             this.SkillsContextMenu.Items.Add(CreateMenuItem("Explore to", () => OpenContainingFolder(skill.Info.FilePath)));
         }
