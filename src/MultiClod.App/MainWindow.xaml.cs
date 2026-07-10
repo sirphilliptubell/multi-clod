@@ -677,7 +677,10 @@ public partial class MainWindow : Window
                 break;
 
             case SessionNodeViewModel session:
-                this.TreeContextMenu.Items.Add(CreateMenuItem("Add Session", () => this.OnAddSession(session)));
+                var addSessionMenu = new MenuItem { Header = "Add Session" };
+                addSessionMenu.Items.Add(CreateMenuItem("Choose Folder...", () => this.OnAddSession(session)));
+                addSessionMenu.Items.Add(CreateMenuItem("Same Folder", () => this.OnAddSessionSameFolder(session)));
+                this.TreeContextMenu.Items.Add(addSessionMenu);
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Import Session", () => this.OnImportSession(session)));
                 this.TreeContextMenu.Items.Add(new Separator());
 
@@ -727,6 +730,20 @@ public partial class MainWindow : Window
         }
 
         this.controller.AddSession(parent, nameDialog.NewName, folderDialog.FolderName);
+    }
+
+    /// <summary>
+    /// "Add Session" -> "Same Folder": skips both prompts and nests a new session directly under
+    /// the clicked one, reusing its working directory and naming the new session after that
+    /// folder - for spinning up a second Claude conversation against the same codebase without
+    /// re-picking the folder every time.
+    /// </summary>
+    private void OnAddSessionSameFolder(SessionNodeViewModel parent)
+    {
+        var name = GetFolderDisplayName(parent.WorkingDirectory);
+        var session = this.controller.AddSession(parent, name, parent.WorkingDirectory);
+        parent.IsExpanded = true;
+        session.IsSelected = true;
     }
 
     private void OnImportSession(TreeNodeViewModel parent)
