@@ -678,7 +678,7 @@ public partial class MainWindow : Window
 
             case SessionNodeViewModel session:
                 var addSessionMenu = new MenuItem { Header = "Add Session" };
-                addSessionMenu.Items.Add(CreateMenuItem("Choose Folder...", () => this.OnAddSession(session)));
+                addSessionMenu.Items.Add(CreateMenuItem("Choose Folder...", () => this.OnAddSessionChooseFolder(session)));
                 addSessionMenu.Items.Add(CreateMenuItem("Same Folder", () => this.OnAddSessionSameFolder(session)));
                 this.TreeContextMenu.Items.Add(addSessionMenu);
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Import Session", () => this.OnImportSession(session)));
@@ -730,6 +730,29 @@ public partial class MainWindow : Window
         }
 
         this.controller.AddSession(parent, nameDialog.NewName, folderDialog.FolderName);
+    }
+
+    /// <summary>
+    /// "Add Session" -> "Choose Folder...": like <see cref="OnAddSession"/> but skips the name
+    /// prompt, naming the new session after the chosen folder (same as "Same Folder" below).
+    /// </summary>
+    private void OnAddSessionChooseFolder(SessionNodeViewModel parent)
+    {
+        var folderDialog = new OpenFolderDialog
+        {
+            Title = "Choose a working directory for the new session",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        };
+
+        if (folderDialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var name = GetFolderDisplayName(folderDialog.FolderName);
+        var session = this.controller.AddSession(parent, name, folderDialog.FolderName);
+        parent.IsExpanded = true;
+        session.IsSelected = true;
     }
 
     /// <summary>
