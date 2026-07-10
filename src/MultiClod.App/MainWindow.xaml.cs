@@ -670,7 +670,7 @@ public partial class MainWindow : Window
                 if (!project.IsUncategorized)
                 {
                     this.TreeContextMenu.Items.Add(new Separator());
-                    this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(project)));
+                    this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(project), inputGestureText: "F2"));
                     this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(project), inputGestureText: "Shift+Del"));
                 }
 
@@ -684,7 +684,7 @@ public partial class MainWindow : Window
                 // Plain enable/disable (unlike Delete's error-dialog approach) - "Stop while
                 // dormant" needs no explanation, it's just not a currently valid action.
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Stop", () => this.StopSession(session), enabled: session.IsRunning));
-                this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(session)));
+                this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(session), inputGestureText: "F2"));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Edit working directory", () => this.OnEditWorkingDirectory(session)));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(session), inputGestureText: "Shift+Del"));
                 break;
