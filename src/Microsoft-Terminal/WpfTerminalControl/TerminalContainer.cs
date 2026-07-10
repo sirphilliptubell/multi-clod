@@ -9,6 +9,7 @@ namespace Microsoft.Terminal.Wpf
     using System.Runtime.InteropServices;
     using System.Windows;
     using System.Windows.Automation.Peers;
+    using System.Windows.Input;
     using System.Windows.Interop;
     using System.Windows.Media;
 
@@ -20,11 +21,18 @@ namespace Microsoft.Terminal.Wpf
     /// </remarks>
     public class TerminalContainer : HwndHost
     {
+        // The vendored Microsoft.Terminal.Control.dll (see src/Microsoft-Terminal/native/NOTICE.md)
+        // exports no keybindings/paste API, so Ctrl+V has to be implemented by hand at this layer;
+        // without this, Ctrl+V falls through as the raw control character 0x16, which most shells
+        // interpret as "quoted insert" rather than a paste.
+        private const ushort VkV = 0x56;
+
         private ITerminalConnection connection;
         private IntPtr hwnd;
         private IntPtr terminal;
         private NativeMethods.ScrollCallback scrollCallback;
         private NativeMethods.WriteCallback writeCallback;
+        private bool suppressNextCtrlVChar;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TerminalContainer"/> class.
@@ -350,6 +358,15 @@ namespace Microsoft.Terminal.Wpf
                     case NativeMethods.WindowMessage.WM_KEYDOWN:
                         {
                             UnpackKeyMessage(wParam, lParam, out ushort vkey, out ushort scanCode, out ushort flags);
+
+                            if (vkey == VkV && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+                            {
+                                this.PasteFromClipboard();
+                                this.suppressNextCtrlVChar = true;
+                                handled = true;
+                                break;
+                            }
+
                             NativeMethods.TerminalSendKeyEvent(this.terminal, vkey, scanCode, flags, true);
                             break;
                         }
@@ -367,6 +384,17 @@ namespace Microsoft.Terminal.Wpf
                         {
                             // WM_CHAR lParam layout documentation: https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-char
                             UnpackCharMessage(wParam, lParam, out char character, out ushort scanCode, out ushort flags);
+
+                            // TranslateMessage turns the Ctrl+V we already handled in WM_KEYDOWN into the
+                            // control character 0x16 (SYN); swallow it so it isn't also sent to the terminal
+                            // on top of the clipboard paste.
+                            if (this.suppressNextCtrlVChar)
+                            {
+                                this.suppressNextCtrlVChar = false;
+                                handled = true;
+                                break;
+                            }
+
                             NativeMethods.TerminalSendCharEvent(this.terminal, character, scanCode, flags);
                             break;
                         }
@@ -411,6 +439,26 @@ namespace Microsoft.Terminal.Wpf
             }
 
             return IntPtr.Zero;
+        }
+
+        private void PasteFromClipboard()
+        {
+            string text;
+            try
+            {
+                // Clipboard access can throw intermittently (e.g. another process briefly owns it);
+                // treat that as "nothing to paste" rather than letting it bubble up and crash the app.
+                text = Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
+            }
+            catch (COMException)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                this.Connection?.WriteInput(text);
+            }
         }
 
         private void Connection_TerminalOutput(object sender, TerminalOutputEventArgs e)

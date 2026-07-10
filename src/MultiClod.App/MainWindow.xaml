@@ -184,12 +184,50 @@
     <Border x:Name="DebugBorder" BorderBrush="Red" BorderThickness="0">
     <Grid Background="Black">
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="48" />
             <ColumnDefinition x:Name="TreeColumn" Width="220" MinWidth="120" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" MinWidth="200" />
         </Grid.ColumnDefinitions>
 
-        <TreeView x:Name="Tree" Grid.Column="0" Background="#1E1E1E" BorderThickness="0"
+        <!--
+            Rail: icon strip for major features. Only one feature (session management)
+            exists today, so there's exactly one item and it has no click handler - it
+            always represents the Panel to its right, which always stays visible. If a
+            second rail icon is ever added, that's when real selection/toggle behavior
+            (swapping which panel is shown, collapsing the panel) should be introduced -
+            not before, since there's nothing to switch between yet.
+        -->
+        <Border Grid.Column="0" Background="#181818" BorderBrush="Black" BorderThickness="0,0,1,0">
+            <StackPanel>
+                <Grid Width="48" Height="48" Margin="0,8,0,0">
+                    <!-- Accent bar marks this item as the one owning the currently visible Panel. -->
+                    <Border Width="3" HorizontalAlignment="Left" Background="#3A96DD" />
+                    <Border Width="32" Height="32" Background="#2D2D30" CornerRadius="4">
+                        <!-- Single sunburst petal-flower, echoing the coral bursts in Assets/app.png (the app's own icon) at one-third scale. -->
+                        <Canvas Width="24" Height="24">
+                            <Canvas.Resources>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Width" Value="3" />
+                                    <Setter Property="Height" Value="11" />
+                                    <Setter Property="Fill" Value="#E2785A" />
+                                    <Setter Property="Canvas.Left" Value="10.5" />
+                                    <Setter Property="Canvas.Top" Value="1" />
+                                </Style>
+                            </Canvas.Resources>
+                            <Ellipse><Ellipse.RenderTransform><RotateTransform Angle="0" CenterX="1.5" CenterY="11" /></Ellipse.RenderTransform></Ellipse>
+                            <Ellipse><Ellipse.RenderTransform><RotateTransform Angle="60" CenterX="1.5" CenterY="11" /></Ellipse.RenderTransform></Ellipse>
+                            <Ellipse><Ellipse.RenderTransform><RotateTransform Angle="120" CenterX="1.5" CenterY="11" /></Ellipse.RenderTransform></Ellipse>
+                            <Ellipse><Ellipse.RenderTransform><RotateTransform Angle="180" CenterX="1.5" CenterY="11" /></Ellipse.RenderTransform></Ellipse>
+                            <Ellipse><Ellipse.RenderTransform><RotateTransform Angle="240" CenterX="1.5" CenterY="11" /></Ellipse.RenderTransform></Ellipse>
+                            <Ellipse><Ellipse.RenderTransform><RotateTransform Angle="300" CenterX="1.5" CenterY="11" /></Ellipse.RenderTransform></Ellipse>
+                        </Canvas>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <TreeView x:Name="Tree" Grid.Column="1" Background="#1E1E1E" BorderThickness="0"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   AllowDrop="True"
                   SelectedItemChanged="OnTreeSelectedItemChanged"
@@ -222,10 +260,10 @@
             </TreeView.ContextMenu>
         </TreeView>
 
-        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+        <GridSplitter Grid.Column="2" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                       Background="#1E1E1E" ResizeBehavior="PreviousAndNext" />
 
-        <Grid Grid.Column="2">
+        <Grid Grid.Column="3">
             <!--
                 Shown whenever the current selection isn't a running session (nothing selected, a
                 Project selected, or a dormant session before it's launched/validated). Always
