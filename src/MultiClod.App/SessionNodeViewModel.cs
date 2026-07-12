@@ -67,6 +67,11 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
 
     public bool IsStarting => this.liveSession?.State == SessionState.Starting;
 
+    public SessionActivity Activity => this.liveSession?.Activity ?? SessionActivity.Idle;
+
+    // Called when the tree selection lands on this session - no-ops for a dormant node.
+    public void ClearLatchedActivity() => this.liveSession?.ClearLatchedActivity();
+
     // Persisted so a stopped/never-relaunched session still shows its last-known Claude-set title
     // instead of reverting to the tree name - see SessionRecord.DetectedTitle.
     public string? DetectedTitle
@@ -123,6 +128,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.RaisePropertyChanged(nameof(this.StatusBrush));
         this.RaisePropertyChanged(nameof(this.IsHollow));
         this.RaisePropertyChanged(nameof(this.IsStarting));
+        this.RaisePropertyChanged(nameof(this.Activity));
         this.RaisePropertyChanged(nameof(this.ToolTipText));
         this.RaisePropertyChanged(nameof(this.DisplayTitle));
     }
@@ -139,6 +145,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.RaisePropertyChanged(nameof(this.StatusBrush));
         this.RaisePropertyChanged(nameof(this.IsHollow));
         this.RaisePropertyChanged(nameof(this.IsStarting));
+        this.RaisePropertyChanged(nameof(this.Activity));
         this.RaisePropertyChanged(nameof(this.ToolTipText));
         this.RaisePropertyChanged(nameof(this.DisplayTitle));
     }
@@ -160,6 +167,10 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         else if (e.PropertyName == nameof(TerminalSession.State))
         {
             this.RaisePropertyChanged(nameof(this.IsStarting));
+        }
+        else if (e.PropertyName == nameof(TerminalSession.Activity))
+        {
+            this.RaisePropertyChanged(nameof(this.Activity));
         }
         else if (e.PropertyName == nameof(TerminalSession.DetectedTitle) && this.liveSession is { } session)
         {

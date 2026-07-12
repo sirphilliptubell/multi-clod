@@ -42,6 +42,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Deployed alongside the exe so ClaudeSessionHooksInstaller can reference it via
+         AppContext.BaseDirectory - see that class for how it's wired into launched sessions. -->
+    <Content Include="..\..\scripts\claude-session-signal.ps1" Link="claude-session-signal.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Velopack" Version="1.2.0" />
     <!-- Renders SKILL.md to a FlowDocument for the Skills panel (Skills\SkillDetailView.xaml.cs).
          The upstream repo (Kryptos-FR/markdig.wpf) was archived in 2024, but 0.5.0.1 is the

@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly SessionStore store;
     private readonly SessionTreeController controller;
     private readonly WindowLayoutStore layoutStore;
+    private readonly ClaudeSessionHooksInstaller hooksInstaller;
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
 
@@ -108,6 +109,11 @@ public partial class MainWindow : Window
 
         this.layoutStore = new WindowLayoutStore();
         ApplyWindowLayout(this, this.TreeColumn, this.layoutStore.Load());
+
+        // Best-effort - see ClaudeSessionHooksInstaller.SettingsFilePath, which LaunchSession
+        // checks before appending --settings, so a failed write here just forgoes activity icons.
+        this.hooksInstaller = new ClaudeSessionHooksInstaller();
+        this.hooksInstaller.EnsureInstalled();
 
         // Catches Shift+Delete even when the embedded terminal owns native Win32 keyboard focus,
         // which the Tree's own KeyDown handler (OnTreeKeyDown) cannot - see ShiftDeleteHook.
@@ -191,6 +197,15 @@ public partial class MainWindow : Window
         // HasBeenStarted is what remembers which one we're on, since both flags take the same GUID.
         var flag = node.HasBeenStarted ? "--resume" : "--session-id";
         var commandLine = $"cmd.exe /c claude {flag} {node.ClaudeSessionId}";
+
+        // Only ever applies to sessions launched through multi-clod - a claude session started
+        // any other way never sees this flag, so the hooks it wires up (see
+        // ClaudeSessionHooksInstaller) can't affect anything outside this app.
+        if (this.hooksInstaller.SettingsFilePath is { } settingsPath)
+        {
+            commandLine += $" --settings \"{settingsPath}\"";
+        }
+
         host.Start(new TerminalLaunchOptions { WorkingDirectory = node.WorkingDirectory, CommandLine = commandLine });
 
         node.AttachLiveSession(session);
@@ -240,6 +255,10 @@ public partial class MainWindow : Window
 
         if (e.NewValue is SessionNodeViewModel session)
         {
+            // The user just looked at this session - a latched NeedsInput/Done icon (if any) has
+            // done its job. No-ops on a dormant node or one still Working.
+            session.ClearLatchedActivity();
+
             if (!session.IsRunning)
             {
                 this.controller.RevalidateBeforeLaunch(session);

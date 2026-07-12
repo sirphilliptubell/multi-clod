@@ -35,6 +35,28 @@
                             <RotateTransform x:Name="StatusSpinnerRotate" Angle="0" />
                         </Ellipse.RenderTransform>
                     </Ellipse>
+                    <!-- Solid (non-dashed) ring in violet signals Claude actively working on a
+                         turn - distinct in both color and dash pattern from the goldenrod dashed
+                         IsStarting spinner above. See the Activity==Working trigger below. -->
+                    <Ellipse x:Name="WorkingSpinner" Width="10" Height="10" Visibility="Collapsed"
+                             Stroke="MediumPurple" StrokeThickness="1.5" StrokeDashArray="3 1"
+                             RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform x:Name="WorkingSpinnerRotate" Angle="0" />
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                    <!-- Latches until the user re-selects this session - see
+                         SessionNodeViewModel.ClearLatchedActivity. -->
+                    <Grid x:Name="NeedsInputGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Orange" />
+                        <TextBlock Text="?" FontSize="8" FontWeight="Bold" Foreground="Black"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
+                    <Grid x:Name="DoneGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Teal" />
+                        <TextBlock Text="&#10003;" FontSize="7" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
                 </Grid>
                 <TextBlock x:Name="SessionNameText" Text="{Binding Name}" Foreground="White" VerticalAlignment="Center" />
             </StackPanel>
@@ -60,6 +82,29 @@
                     <DataTrigger.ExitActions>
                         <StopStoryboard BeginStoryboardName="SpinnerStoryboard" />
                     </DataTrigger.ExitActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Working}">
+                    <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="WorkingSpinner" Property="Visibility" Value="Visible" />
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Name="WorkingSpinnerStoryboard">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="WorkingSpinnerRotate" Storyboard.TargetProperty="Angle"
+                                                 From="0" To="360" Duration="0:0:1.2" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="WorkingSpinnerStoryboard" />
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.NeedsInput}">
+                    <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="NeedsInputGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Done}">
+                    <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="DoneGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
