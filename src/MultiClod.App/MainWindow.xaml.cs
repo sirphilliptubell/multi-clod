@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
@@ -285,9 +286,14 @@ public partial class MainWindow : Window
             // sync with what's actually focused. Left alone, this causes exactly the ancestor-
             // misrouting bug described on OnItemPreviewMouseLeftButtonDown above: the following
             // click resolves selection to the Project row instead of the session actually clicked.
-            // Posting the focus call lets the current dispatch finish first.
+            // Posting the focus call lets the current dispatch finish first. Priority must be below
+            // Render (DispatcherPriority.Normal, the default, is numerically *higher* than Render -
+            // it would run before the layout pass that the Visibility flip just above schedules,
+            // and focusing a control before it's actually been laid out/rendered silently fails).
+            // ContextIdle guarantees the pending layout/render for the pane just made Visible has
+            // completed first.
             var liveSession = session.LiveSession;
-            this.Dispatcher.BeginInvoke(() => liveSession.Host.Pane.Focus());
+            this.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => liveSession.Host.Pane.Focus()));
         }
         else
         {
