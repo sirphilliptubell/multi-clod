@@ -47,6 +47,15 @@
     <Content Include="..\..\scripts\claude-session-signal.ps1" Link="claude-session-signal.ps1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+
+    <!-- Deployed alongside the exe so SessionActivitySounds can load them via
+         AppContext.BaseDirectory - see that class for how/when they're played. -->
+    <Content Include="..\Media\coin.wav" Link="Media\coin.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Media\stomp.wav" Link="Media\stomp.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

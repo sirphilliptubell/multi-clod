@@ -221,6 +221,25 @@ public partial class MainWindow : Window
                 host.Pane.Title = node.DisplayTitle;
                 this.controller.ScheduleSave();
             }
+            else if (e.PropertyName == nameof(TerminalSession.Activity))
+            {
+                // Only worth a sound if the user isn't already looking at it - either this isn't
+                // the on-screen session pane, or the window itself isn't focused. IsActive/pane
+                // Visibility are both read fresh here rather than cached, since either can change
+                // out from under a long-lived session between activity events.
+                var isOnScreen = this.IsActive && host.Pane.View.Visibility == Visibility.Visible;
+                if (!isOnScreen)
+                {
+                    if (session.Activity == SessionActivity.NeedsInput)
+                    {
+                        SessionActivitySounds.PlayNeedsInput();
+                    }
+                    else if (session.Activity == SessionActivity.Done)
+                    {
+                        SessionActivitySounds.PlayDone();
+                    }
+                }
+            }
         };
 
         node.HasBeenStarted = true;
