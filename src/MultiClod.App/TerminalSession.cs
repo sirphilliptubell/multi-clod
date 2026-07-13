@@ -26,12 +26,17 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // which a real conversation title would never start with. See claude-session-signal.ps1.
     private const string ActivitySentinelPrefix = "MULTICLOD_ACTIVITY:";
 
+    // A second, independent OSC 2 sequence emitted alongside the activity marker, carrying Claude
+    // Code's own live session_id - see claude-session-signal.ps1 and ObservedClaudeSessionId.
+    private const string SessionIdSentinelPrefix = "MULTICLOD_SESSION:";
+
     private SessionState state = SessionState.Starting;
     private string statusText = "Starting";
     private Brush statusBrush = StartingBrush;
     private bool isHollow;
     private string? detectedTitle;
     private SessionActivity activity = SessionActivity.Idle;
+    private Guid? observedClaudeSessionId;
 
     // The prompt_id that set the current NeedsInput sticky (from the agent_needs_input
     // Notification - Claude asked a question), or null if there is none / it came from
@@ -97,6 +102,16 @@ public sealed class TerminalSession : INotifyPropertyChanged
         private set => this.SetField(ref this.activity, value);
     }
 
+    // Claude Code's own live session_id, as last reported by a hook firing - see OnHostTitleChanged.
+    // Null until the first hook fires. MainWindow.LaunchSession compares this against the owning
+    // node's persisted ClaudeSessionId and corrects/re-saves the node when they diverge (e.g. after
+    // /clear inside the CLI swaps Claude onto a new transcript underneath us).
+    public Guid? ObservedClaudeSessionId
+    {
+        get => this.observedClaudeSessionId;
+        private set => this.SetField(ref this.observedClaudeSessionId, value);
+    }
+
     // Clears a latched NeedsInput/Done back to Idle once the user looks at this session again -
     // called from SessionNodeViewModel when the tree selection lands on this session. Never
     // interrupts Working, since that reflects Claude actually being mid-turn right now.
@@ -112,48 +127,62 @@ public sealed class TerminalSession : INotifyPropertyChanged
     {
         // Same cross-thread rationale as OnHostStateChanged below - ISessionHost.TitleChanged
         // fires from ConPtyConnection's output-pump thread.
-        Application.Current.Dispatcher.BeginInvoke(() =>
+        Application.Current.Dispatcher.BeginInvoke(() => this.ApplyTitle(title));
+    }
+
+    // Split out from OnHostTitleChanged so tests can drive the marker-parsing logic directly
+    // without needing a live WPF Application/Dispatcher on the test thread.
+    internal void ApplyTitle(string title)
+    {
+        if (title.StartsWith(SessionIdSentinelPrefix, StringComparison.Ordinal))
         {
-            if (!title.StartsWith(ActivitySentinelPrefix, StringComparison.Ordinal))
+            if (Guid.TryParse(title[SessionIdSentinelPrefix.Length..], out var sessionId))
             {
-                this.DetectedTitle = title;
-                return;
+                this.ObservedClaudeSessionId = sessionId;
             }
 
-            // "Kind" and "Kind:promptId" - see claude-session-signal.ps1. Only NeedsInputSticky and
-            // Stop carry a promptId; a real Claude Code prompt_id is a UUID, so it never contains
-            // ':' itself.
-            var marker = title[ActivitySentinelPrefix.Length..];
-            var colonIndex = marker.IndexOf(':');
-            var kind = colonIndex < 0 ? marker : marker[..colonIndex];
-            var promptId = colonIndex < 0 ? null : marker[(colonIndex + 1)..];
+            return;
+        }
 
-            switch (kind)
-            {
-                case "Working":
-                    this.Activity = SessionActivity.Working;
-                    break;
-                case "NeedsInputSticky":
-                    this.stickyNeedsInputPromptId = promptId;
-                    this.Activity = SessionActivity.NeedsInput;
-                    break;
-                case "NeedsInputTransient":
-                    this.Activity = SessionActivity.NeedsInput;
-                    break;
-                case "Stop":
-                    // A sticky "Claude asked a question" is never silently overwritten by the
-                    // Stop hook that always fires at turn-end for that same turn (matched by
-                    // promptId); a transient permission-prompt block, or a Stop for any later
-                    // turn (a different/absent promptId - e.g. once the user has replied), is
-                    // free to move on to Done.
-                    if (this.stickyNeedsInputPromptId is null || this.stickyNeedsInputPromptId != promptId)
-                    {
-                        this.Activity = SessionActivity.Done;
-                    }
+        if (!title.StartsWith(ActivitySentinelPrefix, StringComparison.Ordinal))
+        {
+            this.DetectedTitle = title;
+            return;
+        }
 
-                    break;
-            }
-        });
+        // "Kind" and "Kind:promptId" - see claude-session-signal.ps1. Only NeedsInputSticky and
+        // Stop carry a promptId; a real Claude Code prompt_id is a UUID, so it never contains
+        // ':' itself.
+        var marker = title[ActivitySentinelPrefix.Length..];
+        var colonIndex = marker.IndexOf(':');
+        var kind = colonIndex < 0 ? marker : marker[..colonIndex];
+        var promptId = colonIndex < 0 ? null : marker[(colonIndex + 1)..];
+
+        switch (kind)
+        {
+            case "Working":
+                this.Activity = SessionActivity.Working;
+                break;
+            case "NeedsInputSticky":
+                this.stickyNeedsInputPromptId = promptId;
+                this.Activity = SessionActivity.NeedsInput;
+                break;
+            case "NeedsInputTransient":
+                this.Activity = SessionActivity.NeedsInput;
+                break;
+            case "Stop":
+                // A sticky "Claude asked a question" is never silently overwritten by the
+                // Stop hook that always fires at turn-end for that same turn (matched by
+                // promptId); a transient permission-prompt block, or a Stop for any later
+                // turn (a different/absent promptId - e.g. once the user has replied), is
+                // free to move on to Done.
+                if (this.stickyNeedsInputPromptId is null || this.stickyNeedsInputPromptId != promptId)
+                {
+                    this.Activity = SessionActivity.Done;
+                }
+
+                break;
+        }
     }
 
     private void OnHostStateChanged(object? sender, SessionState state)

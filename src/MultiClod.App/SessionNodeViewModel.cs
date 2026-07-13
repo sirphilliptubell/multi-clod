@@ -20,12 +20,13 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
     private TerminalSession? liveSession;
     private SessionValidationProblem validationProblem;
     private string? detectedTitle;
+    private Guid claudeSessionId;
 
     public SessionNodeViewModel(Guid id, Guid claudeSessionId, string name, string workingDirectory, bool hasBeenStarted, string? detectedTitle = null)
         : base(name)
     {
         this.Id = id;
-        this.ClaudeSessionId = claudeSessionId;
+        this.claudeSessionId = claudeSessionId;
         this.workingDirectory = workingDirectory;
         this.HasBeenStarted = hasBeenStarted;
         this.detectedTitle = detectedTitle;
@@ -43,7 +44,14 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
 
     public Guid Id { get; }
 
-    public Guid ClaudeSessionId { get; }
+    public Guid ClaudeSessionId => this.claudeSessionId;
+
+    // Corrects the tracked id when Claude Code's own hooks report it has moved onto a different
+    // conversation underneath us (/clear, or an in-CLI /resume) - see TerminalSession's
+    // ObservedClaudeSessionId and MainWindow.LaunchSession, the only caller. Deliberately not a
+    // plain setter: this should only ever be driven by that live-observation path, never by a UI
+    // action, so a node's conversation identity can't be reassigned by accident.
+    public void UpdateClaudeSessionId(Guid newClaudeSessionId) => this.SetField(ref this.claudeSessionId, newClaudeSessionId, nameof(this.ClaudeSessionId));
 
     // Phase 03 flips this to true right after the first successful launch, deciding whether the
     // next launch passes --session-id (never started) or --resume (continuing) to claude.

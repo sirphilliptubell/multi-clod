@@ -221,6 +221,18 @@ public partial class MainWindow : Window
                 host.Pane.Title = node.DisplayTitle;
                 this.controller.ScheduleSave();
             }
+            else if (e.PropertyName == nameof(TerminalSession.ObservedClaudeSessionId))
+            {
+                // Claude Code's hooks just reported a session_id that doesn't match what this node
+                // has on file - it moved onto a different transcript underneath us (most commonly
+                // /clear inside the CLI). Correct and re-persist immediately so the next launch's
+                // --resume targets the conversation the user is actually using, not an abandoned one.
+                if (session.ObservedClaudeSessionId is { } observedSessionId && observedSessionId != node.ClaudeSessionId)
+                {
+                    node.UpdateClaudeSessionId(observedSessionId);
+                    this.controller.ScheduleSave();
+                }
+            }
             else if (e.PropertyName == nameof(TerminalSession.Activity))
             {
                 // Only worth a sound if the user isn't already looking at it - either this isn't
