@@ -59,6 +59,87 @@ public sealed class TerminalSessionTests
         await Assert.That(session.ObservedClaudeSessionId).IsEqualTo(secondId);
     }
 
+    [Test]
+    public async Task ApplyTitle_StopWithNoPendingTask_SetsDoneImmediately()
+    {
+        // Regression check for the common case - no background Task call was ever started, so
+        // Stop should behave exactly as before this change.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Stop");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_StopWithPendingTask_DefersDoneUntilTaskEnd()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Stop");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_TaskEndBeforeStop_DoesNotPrematurelySetDone()
+    {
+        // A Task call that starts and finishes mid-turn (well before Stop) shouldn't flip the
+        // icon on its own - only a Stop that's actually waiting on the counter should.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+    }
+
+    [Test]
+    public async Task ApplyTitle_MultiplePendingTasks_WaitsForAllToEnd()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Stop");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_StickyNeedsInputWithPendingTask_StaysNeedsInput()
+    {
+        // The NeedsInput sticky still takes priority over a pending background task - Stop for
+        // the same turn that asked a question shouldn't be deferred into a later Done.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var promptId = Guid.NewGuid().ToString();
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
+        session.ApplyTitle($"MULTICLOD_ACTIVITY:NeedsInputSticky:{promptId}");
+        session.ApplyTitle($"MULTICLOD_ACTIVITY:Stop:{promptId}");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
+
+        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
+    }
+
     // Minimal ISessionHost stub - TerminalSession's constructor only subscribes to
     // StateChanged/TitleChanged and never touches Pane, so Pane deliberately throws if a test ever
     // starts relying on it unexpectedly.

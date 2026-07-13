@@ -48,6 +48,17 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // it, leaving the icon stuck on NeedsInput through an actually-completed later turn.
     private string? stickyNeedsInputPromptId;
 
+    // Count of Task tool calls (PreToolUse "TaskStart") not yet matched by a SubagentStop
+    // ("TaskEnd"). Any Task call still outstanding when Stop fires is treated as a background
+    // agent - see ClaudeSessionHooksInstaller. Plain in-memory field, same as activity: a restart
+    // kills the whole process tree (ConPtyConnection.Dispose), so starting back at 0 is always
+    // correct rather than something that needs to survive a relaunch.
+    private int pendingBackgroundTasks;
+
+    // Set when a Stop arrives while pendingBackgroundTasks > 0, so the delayed Done transition
+    // (once the counter drains) knows to fire - see OnHostTitleChanged's "TaskEnd"/"Stop" cases.
+    private bool awaitingBackgroundCompletion;
+
     public TerminalSession(string workingDirectory, ISessionHost host)
     {
         this.WorkingDirectory = workingDirectory;
@@ -161,6 +172,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
         switch (kind)
         {
             case "Working":
+                this.awaitingBackgroundCompletion = false;
                 this.Activity = SessionActivity.Working;
                 break;
             case "NeedsInputSticky":
@@ -170,15 +182,35 @@ public sealed class TerminalSession : INotifyPropertyChanged
             case "NeedsInputTransient":
                 this.Activity = SessionActivity.NeedsInput;
                 break;
+            case "TaskStart":
+                this.pendingBackgroundTasks++;
+                break;
+            case "TaskEnd":
+                this.pendingBackgroundTasks = Math.Max(0, this.pendingBackgroundTasks - 1);
+                if (this.pendingBackgroundTasks == 0 && this.awaitingBackgroundCompletion)
+                {
+                    this.awaitingBackgroundCompletion = false;
+                    this.Activity = SessionActivity.Done;
+                }
+
+                break;
             case "Stop":
                 // A sticky "Claude asked a question" is never silently overwritten by the
                 // Stop hook that always fires at turn-end for that same turn (matched by
                 // promptId); a transient permission-prompt block, or a Stop for any later
                 // turn (a different/absent promptId - e.g. once the user has replied), is
-                // free to move on to Done.
+                // free to move on to Done - unless a Task tool call from this turn is still
+                // outstanding, in which case Done is deferred to the "TaskEnd" case above.
                 if (this.stickyNeedsInputPromptId is null || this.stickyNeedsInputPromptId != promptId)
                 {
-                    this.Activity = SessionActivity.Done;
+                    if (this.pendingBackgroundTasks > 0)
+                    {
+                        this.awaitingBackgroundCompletion = true;
+                    }
+                    else
+                    {
+                        this.Activity = SessionActivity.Done;
+                    }
                 }
 
                 break;
@@ -217,6 +249,8 @@ public sealed class TerminalSession : INotifyPropertyChanged
             if (state != SessionState.Running)
             {
                 this.stickyNeedsInputPromptId = null;
+                this.pendingBackgroundTasks = 0;
+                this.awaitingBackgroundCompletion = false;
                 this.Activity = SessionActivity.Idle;
             }
         });

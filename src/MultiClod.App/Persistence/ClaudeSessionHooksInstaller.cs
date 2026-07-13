@@ -5,10 +5,10 @@ namespace MultiClod.App.Persistence;
 
 /// <summary>
 /// Writes a Claude Code settings-overlay file (claude-session-hooks.json under
-/// <see cref="MultiClodDataDirectory"/>) wiring UserPromptSubmit/Stop/Notification hooks to
-/// claude-session-signal.ps1, so LaunchSession can pass it via `claude --settings &lt;path&gt;`.
-/// Confined to sessions multi-clod itself launches - never touches the user's own
-/// ~/.claude/settings.json - see the plan's "Hook scope" decision.
+/// <see cref="MultiClodDataDirectory"/>) wiring UserPromptSubmit/Stop/Notification/PreToolUse/
+/// SubagentStop hooks to claude-session-signal.ps1, so LaunchSession can pass it via
+/// `claude --settings &lt;path&gt;`. Confined to sessions multi-clod itself launches - never touches
+/// the user's own ~/.claude/settings.json - see the plan's "Hook scope" decision.
 /// </summary>
 public sealed class ClaudeSessionHooksInstaller
 {
@@ -47,7 +47,7 @@ public sealed class ClaudeSessionHooksInstaller
 
         object CommandHook(string marker) => new { hooks = new[] { new { type = "command", command = Command(marker) } } };
 
-        object NotificationHook(string matcher, string marker) => new
+        object MatcherHook(string matcher, string marker) => new
         {
             matcher,
             hooks = new[] { new { type = "command", command = Command(marker) } },
@@ -61,9 +61,14 @@ public sealed class ClaudeSessionHooksInstaller
                 Stop = new[] { CommandHook("Stop") },
                 Notification = new[]
                 {
-                    NotificationHook("agent_needs_input", "NeedsInputSticky"),
-                    NotificationHook("permission_prompt", "NeedsInputTransient"),
+                    MatcherHook("agent_needs_input", "NeedsInputSticky"),
+                    MatcherHook("permission_prompt", "NeedsInputTransient"),
                 },
+                // Task tool calls still outstanding when Stop fires are effectively background
+                // agents from this app's perspective (a blocking Task call would already have
+                // returned before Stop fires) - see TerminalSession's pendingBackgroundTasks.
+                PreToolUse = new[] { MatcherHook("Task", "TaskStart") },
+                SubagentStop = new[] { CommandHook("TaskEnd") },
             },
         };
 
