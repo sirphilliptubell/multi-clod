@@ -18,6 +18,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Run tests
+        run: >
+          dotnet build tests\MultiClod.App.Tests\MultiClod.App.Tests.csproj -c Debug &&
+          tests\MultiClod.App.Tests\bin\x64\Debug\net8.0-windows\MultiClod.App.Tests.exe
+
       - name: Derive version from tag
         id: version
         shell: bash
