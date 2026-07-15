@@ -13,11 +13,11 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Empty by default so plain `dotnet build`/F5 debugging never needs MULTICLOD_DEPLOY_PATH
-         set - UpdateFeedLocation treats empty/missing as "no update source configured". Only
-         scripts\Publish-MultiClodApp.ps1 sets this, via -p:MultiClodUpdateFeedPath=..., sourced
-         from the MULTICLOD_DEPLOY_PATH environment variable that lives outside this repo. -->
-    <MultiClodUpdateFeedPath Condition="'$(MultiClodUpdateFeedPath)' == ''"></MultiClodUpdateFeedPath>
+    <!-- Empty by default so plain `dotnet build`/F5 debugging never checks GitHub for updates -
+         UpdateFeedLocation treats empty/missing as "no update source configured". Release
+         publishes default to the repo's own GitHub URL automatically - no -p: override or env var
+         needed since this is a public repo URL, not a secret. -->
+    <MultiClodUpdateFeedUrl Condition="'$(MultiClodUpdateFeedUrl)' == '' AND '$(Configuration)' == 'Release'">https://github.com/sirphilliptubell/multi-clod</MultiClodUpdateFeedUrl>
   </PropertyGroup>
 
   <ItemGroup>
@@ -67,7 +67,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AssemblyMetadata Include="MultiClodUpdateFeedPath" Value="$(MultiClodUpdateFeedPath)" />
+    <AssemblyMetadata Include="MultiClodUpdateFeedUrl" Value="$(MultiClodUpdateFeedUrl)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -78,14 +78,5 @@
     <ApplicationDefinition Remove="App.xaml" />
     <Page Include="App.xaml" />
   </ItemGroup>
-
-  <!-- Guards the one scenario the plain empty-default above doesn't: someone runs `dotnet
-       publish` directly (skipping the script) without realizing MULTICLOD_DEPLOY_PATH /
-       -p:MultiClodUpdateFeedPath needs to be supplied. Only fires on `publish`, so ordinary
-       build/F5 debugging is unaffected. -->
-  <Target Name="EnsureUpdateFeedPathForPublish" BeforeTargets="Publish">
-    <Error Condition="'$(MultiClodUpdateFeedPath)' == ''"
-           Text="MultiClodUpdateFeedPath is not set. Run scripts\Publish-MultiClodApp.ps1 (which sources it from the MULTICLOD_DEPLOY_PATH environment variable) instead of calling dotnet publish directly, or pass -p:MultiClodUpdateFeedPath=... explicitly." />
-  </Target>
 
 </Project>

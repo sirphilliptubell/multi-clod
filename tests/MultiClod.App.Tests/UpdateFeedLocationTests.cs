@@ -8,33 +8,17 @@ namespace MultiClod.App.Tests;
 public sealed class UpdateFeedLocationTests
 {
     [Test]
-    public async Task Resolve_OverrideSet_ReturnsOverride()
+    public async Task Resolve_BakedInSet_ReturnsBakedIn()
     {
-        var result = UpdateFeedLocation.Resolve(envOverride: @"\\override\share", bakedInValue: @"\\baked\share");
+        var result = UpdateFeedLocation.Resolve(bakedInValue: "https://github.com/example/repo");
 
-        await Assert.That(result).IsEqualTo(@"\\override\share");
+        await Assert.That(result).IsEqualTo("https://github.com/example/repo");
     }
 
     [Test]
-    public async Task Resolve_OnlyBakedInSet_ReturnsBakedIn()
+    public async Task Resolve_BakedInNull_ReturnsNull()
     {
-        var result = UpdateFeedLocation.Resolve(envOverride: null, bakedInValue: @"\\baked\share");
-
-        await Assert.That(result).IsEqualTo(@"\\baked\share");
-    }
-
-    [Test]
-    public async Task Resolve_OverrideEmpty_FallsBackToBakedIn()
-    {
-        var result = UpdateFeedLocation.Resolve(envOverride: string.Empty, bakedInValue: @"\\baked\share");
-
-        await Assert.That(result).IsEqualTo(@"\\baked\share");
-    }
-
-    [Test]
-    public async Task Resolve_NeitherSet_ReturnsNull()
-    {
-        var result = UpdateFeedLocation.Resolve(envOverride: null, bakedInValue: null);
+        var result = UpdateFeedLocation.Resolve(bakedInValue: null);
 
         await Assert.That(result).IsNull();
     }
@@ -42,7 +26,7 @@ public sealed class UpdateFeedLocationTests
     [Test]
     public async Task Resolve_BakedInEmpty_ReturnsNull()
     {
-        var result = UpdateFeedLocation.Resolve(envOverride: null, bakedInValue: string.Empty);
+        var result = UpdateFeedLocation.Resolve(bakedInValue: string.Empty);
 
         await Assert.That(result).IsNull();
     }

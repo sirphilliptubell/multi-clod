@@ -3,34 +3,24 @@ using System.Reflection;
 namespace MultiClod.App.Updates;
 
 /// <summary>
-/// Where this build checks for Velopack updates - baked into the exe at publish time as
-/// AssemblyMetadata (see MultiClodUpdateFeedPath in the csproj), sourced from the
-/// MULTICLOD_DEPLOY_PATH environment variable on the publishing machine and never committed to
-/// source control. An optional MULTICLOD_UPDATE_FEED_PATH environment variable on the *running*
-/// machine overrides the baked-in value, giving a zero-infrastructure escape hatch if the share
-/// ever needs to move without republishing every existing install.
+/// Where this build checks for Velopack updates (a GitHub repo URL for <see
+/// cref="Velopack.Sources.GithubSource"/>) - baked into the exe at publish time as AssemblyMetadata
+/// (see MultiClodUpdateFeedUrl in the csproj). Empty/missing for Debug builds - see the csproj's
+/// Configuration-gated default - so plain `dotnet build`/F5 debugging never checks GitHub for
+/// updates.
 /// </summary>
 public static class UpdateFeedLocation {
-	private const string BakedInMetadataKey = "MultiClodUpdateFeedPath";
-	private const string RuntimeOverrideEnvVar = "MULTICLOD_UPDATE_FEED_PATH";
+	private const string BakedInMetadataKey = "MultiClodUpdateFeedUrl";
 
 	public static string? Path { get; } = Resolve(
-		Environment.GetEnvironmentVariable(RuntimeOverrideEnvVar),
 		Assembly.GetExecutingAssembly()
 			.GetCustomAttributes<AssemblyMetadataAttribute>()
 			.FirstOrDefault(a => a.Key == BakedInMetadataKey)?.Value);
 
 	/// <summary>
-	/// Pure decision logic, kept separate from the real env/assembly reads above so tests can
-	/// exercise "override wins" / "falls back to baked-in" / "neither set -&gt; null" directly,
-	/// instead of having to mutate real process environment variables (flaky under parallel test
-	/// execution).
+	/// Pure decision logic, kept separate from the real assembly read above so tests can exercise
+	/// "baked-in set" / "baked-in null" / "baked-in empty" directly.
 	/// </summary>
-	public static string? Resolve(string? envOverride, string? bakedInValue) {
-		if (!string.IsNullOrEmpty(envOverride)) {
-			return envOverride;
-		}
-
-		return string.IsNullOrEmpty(bakedInValue) ? null : bakedInValue;
-	}
+	public static string? Resolve(string? bakedInValue) =>
+		string.IsNullOrEmpty(bakedInValue) ? null : bakedInValue;
 }

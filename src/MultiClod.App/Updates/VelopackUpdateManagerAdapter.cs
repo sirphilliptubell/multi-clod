@@ -1,4 +1,5 @@
 using Velopack;
+using Velopack.Sources;
 
 namespace MultiClod.App.Updates;
 
@@ -10,8 +11,11 @@ namespace MultiClod.App.Updates;
 internal sealed class VelopackUpdateManagerAdapter : IUpdateManager {
 	private readonly UpdateManager inner;
 
-	public VelopackUpdateManagerAdapter(string feedPath) {
-		this.inner = new UpdateManager(feedPath);
+	public VelopackUpdateManagerAdapter(string repoUrl) {
+		// accessToken: null - the repo is public, so reading releases needs no auth. Uploading a
+		// release (in the GitHub Actions workflow) is a separate, authenticated write and isn't
+		// this code path at all.
+		this.inner = new UpdateManager(new GithubSource(repoUrl, accessToken: null, prerelease: false));
 	}
 
 	public Task<UpdateInfo?> CheckForUpdatesAsync() => this.inner.CheckForUpdatesAsync();
