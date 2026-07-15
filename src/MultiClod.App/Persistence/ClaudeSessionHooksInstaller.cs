@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using MultiClod.App.Diagnostics;
 
 namespace MultiClod.App.Persistence;
 
@@ -42,8 +43,17 @@ public sealed class ClaudeSessionHooksInstaller
 
         var settingsPath = Path.Combine(this.dataDirectory, "claude-session-hooks.json");
 
-        string Command(string marker) =>
-            $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" {marker}";
+        string Command(string marker)
+        {
+            var command = $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" {marker}";
+
+            // Debug-only: have claude-session-signal.ps1 log each hook firing's raw payload/parsed
+            // session_id, to diagnose why the /clear session-id sync sometimes doesn't correct
+            // drift - see that script's $DebugLogPath param and DebugLog.AppendHookDebugLogArg's
+            // own remarks. A no-op in Release, so production installs never write this file.
+            DebugLog.AppendHookDebugLogArg(ref command, this.dataDirectory);
+            return command;
+        }
 
         object CommandHook(string marker) => new { hooks = new[] { new { type = "command", command = Command(marker) } } };
 

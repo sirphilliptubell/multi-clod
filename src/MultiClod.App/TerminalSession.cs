@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using MultiClod.App.Diagnostics;
 using MultiClod.Terminal.Abstractions;
 
 namespace MultiClod.App;
@@ -21,14 +22,16 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // MainWindow.xaml's StatusDot IsHollow trigger) - this is the stroke color for that outline.
     private static readonly Brush HollowBrush = Brushes.LimeGreen;
 
-    // Hook-emitted activity markers ride the same OSC 2 (window title) channel real Claude-set
-    // titles use - see ConPtyConnection.ScanForTitleSequences - distinguished only by this prefix,
-    // which a real conversation title would never start with. See claude-session-signal.ps1.
-    private const string ActivitySentinelPrefix = "MULTICLOD_ACTIVITY:";
-
-    // A second, independent OSC 2 sequence emitted alongside the activity marker, carrying Claude
-    // Code's own live session_id - see claude-session-signal.ps1 and ObservedClaudeSessionId.
-    private const string SessionIdSentinelPrefix = "MULTICLOD_SESSION:";
+    // Hook-emitted markers ride the same OSC 2 (window title) channel real Claude-set titles use -
+    // see ConPtyConnection.ScanForTitleSequences - distinguished only by this prefix, which a real
+    // conversation title would never start with. See claude-session-signal.ps1.
+    //
+    // Packs both the activity kind and Claude's live session_id into ONE title
+    // ("MULTICLOD:<sessionId>|<kind>[:promptId]") rather than two independent OSC sequences -
+    // live testing showed Claude Code only forwards the LAST title-setting escape sequence from a
+    // hook's terminalSequence when more than one is present, silently dropping the rest. A single
+    // combined sequence sidesteps that entirely.
+    private const string CombinedSentinelPrefix = "MULTICLOD:";
 
     private SessionState state = SessionState.Starting;
     private string statusText = "Starting";
@@ -145,26 +148,30 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // without needing a live WPF Application/Dispatcher on the test thread.
     internal void ApplyTitle(string title)
     {
-        if (title.StartsWith(SessionIdSentinelPrefix, StringComparison.Ordinal))
-        {
-            if (Guid.TryParse(title[SessionIdSentinelPrefix.Length..], out var sessionId))
-            {
-                this.ObservedClaudeSessionId = sessionId;
-            }
+        DebugLog.LogTerminal($"ApplyTitle raw={title}");
 
-            return;
-        }
-
-        if (!title.StartsWith(ActivitySentinelPrefix, StringComparison.Ordinal))
+        if (!title.StartsWith(CombinedSentinelPrefix, StringComparison.Ordinal))
         {
             this.DetectedTitle = title;
             return;
         }
 
+        // "<sessionId>|<kind>[:promptId]" - see claude-session-signal.ps1. sessionId is empty when
+        // the hook's own JSON parse failed; Guid.TryParse rejects that harmlessly, leaving
+        // ObservedClaudeSessionId untouched rather than clearing a previously-good value.
+        var combined = title[CombinedSentinelPrefix.Length..];
+        var pipeIndex = combined.IndexOf('|');
+        var sessionIdPart = pipeIndex < 0 ? string.Empty : combined[..pipeIndex];
+        var marker = pipeIndex < 0 ? combined : combined[(pipeIndex + 1)..];
+
+        if (Guid.TryParse(sessionIdPart, out var sessionId))
+        {
+            this.ObservedClaudeSessionId = sessionId;
+        }
+
         // "Kind" and "Kind:promptId" - see claude-session-signal.ps1. Only NeedsInputSticky and
         // Stop carry a promptId; a real Claude Code prompt_id is a UUID, so it never contains
         // ':' itself.
-        var marker = title[ActivitySentinelPrefix.Length..];
         var colonIndex = marker.IndexOf(':');
         var kind = colonIndex < 0 ? marker : marker[..colonIndex];
         var promptId = colonIndex < 0 ? null : marker[(colonIndex + 1)..];

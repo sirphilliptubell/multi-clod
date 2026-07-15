@@ -56,23 +56,6 @@ public sealed class SessionTreeController
         node.ValidationProblem = SessionValidator.Validate(node);
     }
 
-    /// <summary>
-    /// Points a session at a different working directory and re-validates. Does not reset
-    /// ClaudeSessionId/HasBeenStarted - if the new folder has no matching claude transcript,
-    /// ClaudeDataMissing will (correctly) still show afterward. This only fixes
-    /// WorkingDirectoryMissing (e.g. a folder that was renamed back into place); resuming a
-    /// conversation is tied to the folder it started in, so relocating to a genuinely different
-    /// folder can't silently graft the old conversation onto it. The only way out of that state is
-    /// deleting and recreating the session - don't "fix" this into resetting the id, or a relocate
-    /// would silently start a fresh, unrelated conversation under the same tree node.
-    /// </summary>
-    public void RelocateWorkingDirectory(SessionNodeViewModel node, string newWorkingDirectory)
-    {
-        node.WorkingDirectory = newWorkingDirectory;
-        this.RevalidateBeforeLaunch(node);
-        this.ScheduleSave();
-    }
-
     public void ScheduleSave()
     {
         this.store.ScheduleSave(this.BuildSnapshot());

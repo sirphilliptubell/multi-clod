@@ -8,12 +8,12 @@ namespace MultiClod.App.Tests;
 public sealed class TerminalSessionTests
 {
     [Test]
-    public async Task ApplyTitle_SessionIdMarker_SetsObservedClaudeSessionIdOnly()
+    public async Task ApplyTitle_SessionIdOnly_SetsObservedClaudeSessionIdOnly()
     {
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
         var claudeSessionId = Guid.NewGuid();
 
-        session.ApplyTitle($"MULTICLOD_SESSION:{claudeSessionId}");
+        session.ApplyTitle($"MULTICLOD:{claudeSessionId}|");
 
         await Assert.That(session.ObservedClaudeSessionId).IsEqualTo(claudeSessionId);
         await Assert.That(session.DetectedTitle).IsNull();
@@ -21,15 +21,30 @@ public sealed class TerminalSessionTests
     }
 
     [Test]
-    public async Task ApplyTitle_ActivityMarker_StillUpdatesActivityNotSessionId()
+    public async Task ApplyTitle_ActivityOnly_StillUpdatesActivityNotSessionId()
     {
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
+        session.ApplyTitle("MULTICLOD:|Working");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
         await Assert.That(session.ObservedClaudeSessionId).IsNull();
         await Assert.That(session.DetectedTitle).IsNull();
+    }
+
+    [Test]
+    public async Task ApplyTitle_CombinedMarker_SetsBothSessionIdAndActivityFromOneTitle()
+    {
+        // The whole point of packing both into one OSC sequence (see claude-session-signal.ps1's
+        // remarks) - Claude Code only reliably forwards one title-setting sequence per hook
+        // response, so both pieces of state must land from a single ApplyTitle call.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var claudeSessionId = Guid.NewGuid();
+
+        session.ApplyTitle($"MULTICLOD:{claudeSessionId}|Working");
+
+        await Assert.That(session.ObservedClaudeSessionId).IsEqualTo(claudeSessionId);
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
     }
 
     [Test]
@@ -45,7 +60,7 @@ public sealed class TerminalSessionTests
     }
 
     [Test]
-    public async Task ApplyTitle_SessionIdMarkerThenNewOne_UpdatesToLatest()
+    public async Task ApplyTitle_SessionIdThenNewOne_UpdatesToLatest()
     {
         // Mirrors what happens across two hook firings after /clear swaps Claude onto a new
         // transcript mid-session: the second, differing marker should win.
@@ -53,8 +68,8 @@ public sealed class TerminalSessionTests
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
 
-        session.ApplyTitle($"MULTICLOD_SESSION:{firstId}");
-        session.ApplyTitle($"MULTICLOD_SESSION:{secondId}");
+        session.ApplyTitle($"MULTICLOD:{firstId}|");
+        session.ApplyTitle($"MULTICLOD:{secondId}|");
 
         await Assert.That(session.ObservedClaudeSessionId).IsEqualTo(secondId);
     }
@@ -66,8 +81,8 @@ public sealed class TerminalSessionTests
         // Stop should behave exactly as before this change.
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Stop");
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
     }
@@ -77,13 +92,13 @@ public sealed class TerminalSessionTests
     {
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Stop");
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|TaskStart");
+        session.ApplyTitle("MULTICLOD:|Stop");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+        session.ApplyTitle("MULTICLOD:|TaskEnd");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
     }
@@ -95,9 +110,9 @@ public sealed class TerminalSessionTests
         // icon on its own - only a Stop that's actually waiting on the counter should.
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|TaskStart");
+        session.ApplyTitle("MULTICLOD:|TaskEnd");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
     }
@@ -107,15 +122,15 @@ public sealed class TerminalSessionTests
     {
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Stop");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|TaskStart");
+        session.ApplyTitle("MULTICLOD:|TaskStart");
+        session.ApplyTitle("MULTICLOD:|Stop");
+        session.ApplyTitle("MULTICLOD:|TaskEnd");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+        session.ApplyTitle("MULTICLOD:|TaskEnd");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
     }
@@ -128,14 +143,14 @@ public sealed class TerminalSessionTests
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
         var promptId = Guid.NewGuid().ToString();
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:Working");
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskStart");
-        session.ApplyTitle($"MULTICLOD_ACTIVITY:NeedsInputSticky:{promptId}");
-        session.ApplyTitle($"MULTICLOD_ACTIVITY:Stop:{promptId}");
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|TaskStart");
+        session.ApplyTitle($"MULTICLOD:|NeedsInputSticky:{promptId}");
+        session.ApplyTitle($"MULTICLOD:|Stop:{promptId}");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
 
-        session.ApplyTitle("MULTICLOD_ACTIVITY:TaskEnd");
+        session.ApplyTitle("MULTICLOD:|TaskEnd");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
     }

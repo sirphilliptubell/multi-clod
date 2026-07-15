@@ -12,6 +12,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
@@ -229,8 +230,14 @@ public partial class MainWindow : Window
                 // --resume targets the conversation the user is actually using, not an abandoned one.
                 if (session.ObservedClaudeSessionId is { } observedSessionId && observedSessionId != node.ClaudeSessionId)
                 {
+                    DebugLog.LogTerminal($"Correcting node={node.Name} old={node.ClaudeSessionId} new={observedSessionId}");
                     node.UpdateClaudeSessionId(observedSessionId);
                     this.controller.ScheduleSave();
+                }
+                else
+                {
+                    DebugLog.LogTerminal(
+                        $"ObservedClaudeSessionId changed but no correction: node={node.Name} observed={session.ObservedClaudeSessionId} current={node.ClaudeSessionId}");
                 }
             }
             else if (e.PropertyName == nameof(TerminalSession.Activity))
@@ -473,6 +480,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+    }
+
+    private static void OpenFolder(string folder)
+    {
         Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
     }
 
@@ -744,7 +756,12 @@ public partial class MainWindow : Window
                 // dormant" needs no explanation, it's just not a currently valid action.
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Stop", () => this.StopSession(session), enabled: session.IsRunning));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(session), inputGestureText: "F2"));
-                this.TreeContextMenu.Items.Add(CreateMenuItem("Edit working directory", () => this.OnEditWorkingDirectory(session)));
+
+                var metadataMenu = new MenuItem { Header = "Metadata" };
+                metadataMenu.Items.Add(CreateMenuItem($"Explore to {session.WorkingDirectory}", () => OpenFolder(session.WorkingDirectory)));
+                metadataMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
+                this.TreeContextMenu.Items.Add(metadataMenu);
+
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(session), inputGestureText: "Shift+Del"));
                 break;
         }
@@ -850,31 +867,6 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true)
         {
             this.controller.Rename(node, dialog.NewName);
-        }
-    }
-
-    private void OnEditWorkingDirectory(SessionNodeViewModel session)
-    {
-        var folderDialog = new OpenFolderDialog
-        {
-            Title = "Choose a working directory for this session",
-            InitialDirectory = Directory.Exists(session.WorkingDirectory)
-                ? session.WorkingDirectory
-                : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        };
-
-        if (folderDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        this.controller.RelocateWorkingDirectory(session, folderDialog.FolderName);
-
-        // Refresh the pane area if this is the node currently being looked at - relocating can
-        // clear (or introduce) an error without the tree selection itself changing.
-        if (ReferenceEquals(this.Tree.SelectedItem, session))
-        {
-            this.OnTreeSelectedItemChanged(this, new RoutedPropertyChangedEventArgs<object>(session, session));
         }
     }
 
