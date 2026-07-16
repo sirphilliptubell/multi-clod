@@ -17,6 +17,7 @@ using MultiClod.App.Native;
 using MultiClod.App.Persistence;
 using MultiClod.App.Settings;
 using MultiClod.App.Skills;
+using MultiClod.App.Theming;
 using MultiClod.App.Updates;
 using MultiClod.Terminal.Abstractions;
 using MultiClod.Terminal.Wpf;
@@ -25,14 +26,6 @@ namespace MultiClod.App;
 
 public partial class MainWindow : Window
 {
-    private static readonly TerminalPaneTheme SessionTheme = new()
-    {
-        Background = Color.FromRgb(12, 12, 12),
-        Foreground = Color.FromRgb(242, 242, 242),
-        CursorColor = Color.FromRgb(242, 242, 242),
-        SelectionBackground = Color.FromRgb(58, 150, 221),
-    };
-
     private readonly SessionStore store;
     private readonly SessionTreeController controller;
     private readonly WindowLayoutStore layoutStore;
@@ -117,10 +110,12 @@ public partial class MainWindow : Window
 
         this.settingsStore = new AppSettingsStore();
         this.appSettings = this.settingsStore.Load();
+        ThemeManager.Apply(this.appSettings.Theme);
         this.SettingsView.LoadSettings(this.appSettings);
         this.SettingsView.UseShiftEnterForNewlineChanged += this.OnUseShiftEnterForNewlineChanged;
         this.SettingsView.DefaultRootFolderChanged += this.OnDefaultRootFolderChanged;
         this.SettingsView.UseWorktreeByDefaultChanged += this.OnUseWorktreeByDefaultChanged;
+        this.SettingsView.ThemeChanged += this.OnThemeChanged;
 
         // Best-effort - see ClaudeSessionHooksInstaller.SettingsFilePath, which LaunchSession
         // checks before appending --settings, so a failed write here just forgoes activity icons.
@@ -187,7 +182,7 @@ public partial class MainWindow : Window
         }
 
         var host = new WpfSessionHost();
-        host.Pane.ApplyTheme(SessionTheme);
+        host.Pane.ApplyTheme(ThemeManager.GetTerminalTheme(this.appSettings.Theme));
         host.Pane.NewlineOnShiftEnter = this.appSettings.UseShiftEnterForNewline;
         host.Pane.Title = node.DisplayTitle;
         host.CloseRequested += (_, _) => this.StopSession(node);
@@ -449,6 +444,30 @@ public partial class MainWindow : Window
     {
         this.appSettings = this.appSettings with { UseWorktreeByDefault = useWorktreeByDefault };
         this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnThemeChanged(object? sender, AppTheme theme)
+    {
+        this.appSettings = this.appSettings with { Theme = theme };
+        this.settingsStore.Save(this.appSettings);
+
+        ThemeManager.Apply(theme);
+
+        // Chrome picks up the new theme automatically (every color is a DynamicResource), but
+        // each live terminal pane's colors were baked in at ApplyTheme time in LaunchSession, so
+        // already-running sessions need pushing explicitly - same pattern as
+        // OnUseShiftEnterForNewlineChanged. Sessions started after this point read
+        // this.appSettings.Theme fresh in LaunchSession.
+        var terminalTheme = ThemeManager.GetTerminalTheme(theme);
+        foreach (var node in this.controller.AllSessionNodes())
+        {
+            if (node.LiveSession is { } session)
+            {
+                session.Host.Pane.ApplyTheme(terminalTheme);
+            }
+        }
+
+        this.SkillDetail.RefreshTheme();
     }
 
     private void HideActiveSessionPane()

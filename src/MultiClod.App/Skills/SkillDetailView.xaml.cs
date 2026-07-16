@@ -79,12 +79,28 @@ public partial class SkillDetailView : UserControl
         return true;
     }
 
+    /// <summary>
+    /// Re-renders the currently loaded skill's markdown so its colors match the just-applied
+    /// theme - called by MainWindow.OnThemeChanged. A no-op if no skill is loaded (the view mode
+    /// FlowDocumentScrollViewer/RawEditor's own DynamicResource-bound colors update on their own).
+    /// </summary>
+    internal void RefreshTheme()
+    {
+        if (this.currentSkill is not null)
+        {
+            this.RenderMarkdown(this.RawEditor.Text);
+        }
+    }
+
     // Markdig.Wpf's default styles (App.xaml's generic.xaml merge) set Foreground on each block
     // (heading/paragraph) style rather than relying on inheritance, so setting it once on the
     // FlowDocument itself doesn't cascade - those per-block style values win over it. Overriding
-    // Foreground as a local value on every block instead beats the style setter.
-    private static readonly Brush MarkdownForeground =
-        (Brush)new BrushConverter().ConvertFromString("#FFDCDCDC")!;
+    // Foreground as a local value on every block instead beats the style setter. A live property
+    // (not a cached field) so it reflects whatever theme is current at each RenderMarkdown call -
+    // the FlowDocument itself is built once per render, not resource-bound, so it can't just pick
+    // up a DynamicResource change on its own; see RefreshTheme.
+    private static Brush MarkdownForeground =>
+        (Brush)Application.Current.Resources["Theme.Brush.MarkdownForeground"];
 
     // Code spans/blocks (Markdig's CodeStyleKey / CodeBlockStyleKey) only set their own light
     // Background, relying on inheritance for Foreground - previously that inherited the document's

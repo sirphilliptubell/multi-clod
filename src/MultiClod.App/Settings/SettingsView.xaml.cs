@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using MultiClod.App.Persistence;
+using MultiClod.App.Theming;
 
 namespace MultiClod.App.Settings;
 
@@ -40,12 +41,19 @@ public partial class SettingsView : UserControl
     /// </summary>
     internal event EventHandler<bool>? UseWorktreeByDefaultChanged;
 
+    /// <summary>
+    /// Raised only in response to the user picking a different theme radio button - MainWindow
+    /// persists it and applies it (see ThemeManager).
+    /// </summary>
+    internal event EventHandler<AppTheme>? ThemeChanged;
+
     internal void LoadSettings(AppSettings settings)
     {
         this.suppressChangeEvents = true;
         this.ShiftEnterToggle.IsChecked = settings.UseShiftEnterForNewline;
         this.DefaultRootFolderBox.Text = settings.DefaultRootFolder ?? string.Empty;
         this.WorktreeToggle.IsChecked = settings.UseWorktreeByDefault;
+        this.GetThemeRadio(settings.Theme).IsChecked = true;
         this.suppressChangeEvents = false;
     }
 
@@ -87,4 +95,28 @@ public partial class SettingsView : UserControl
 
         this.UseWorktreeByDefaultChanged?.Invoke(this, this.WorktreeToggle.IsChecked == true);
     }
+
+    private void OnThemeRadioChecked(object sender, RoutedEventArgs e)
+    {
+        if (this.suppressChangeEvents)
+        {
+            return;
+        }
+
+        var theme = sender switch
+        {
+            var s when s == this.DarkLowContrastThemeRadio => AppTheme.DarkLowContrast,
+            var s when s == this.LightThemeRadio => AppTheme.Light,
+            _ => AppTheme.Dark,
+        };
+
+        this.ThemeChanged?.Invoke(this, theme);
+    }
+
+    private RadioButton GetThemeRadio(AppTheme theme) => theme switch
+    {
+        AppTheme.DarkLowContrast => this.DarkLowContrastThemeRadio,
+        AppTheme.Light => this.LightThemeRadio,
+        _ => this.DarkThemeRadio,
+    };
 }

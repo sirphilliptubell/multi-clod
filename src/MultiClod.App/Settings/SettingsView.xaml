@@ -12,39 +12,53 @@
             </ResourceDictionary.MergedDictionaries>
 
             <Style TargetType="TextBox">
-                <Setter Property="Background" Value="#2A2A2A" />
-                <Setter Property="Foreground" Value="White" />
-                <Setter Property="CaretBrush" Value="White" />
-                <Setter Property="BorderBrush" Value="#3F3F3F" />
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="CaretBrush" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
                 <Setter Property="Padding" Value="8,6" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
 
             <Style TargetType="Button">
-                <Setter Property="Background" Value="#2A2A2A" />
-                <Setter Property="Foreground" Value="White" />
-                <Setter Property="BorderBrush" Value="#3F3F3F" />
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
                 <Setter Property="Padding" Value="10,6" />
+            </Style>
+
+            <!-- No retemplate, same as AddSessionDialog's plain CheckBox style - the default
+                 chrome's small indicator circle reads fine against either theme's background. -->
+            <Style TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="Margin" Value="0,0,0,6" />
             </Style>
         </ResourceDictionary>
     </UserControl.Resources>
-    <Grid Background="#1E1E1E">
+    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}">
         <StackPanel Margin="24" MaxWidth="480" HorizontalAlignment="Left">
-            <TextBlock Text="Settings" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,16" />
+            <TextBlock Text="Settings" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" FontSize="18" FontWeight="Bold" Margin="0,0,0,16" />
 
-            <TextBlock Text="General" Foreground="Gray" FontSize="12" FontWeight="Bold" Margin="0,0,0,8" />
+            <TextBlock Text="Appearance" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8" />
+
+            <TextBlock Text="Theme" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,6" />
+            <RadioButton x:Name="DarkThemeRadio" GroupName="Theme" Content="Dark" Checked="OnThemeRadioChecked" />
+            <RadioButton x:Name="DarkLowContrastThemeRadio" GroupName="Theme" Content="Dark (Low Contrast)" Checked="OnThemeRadioChecked" />
+            <RadioButton x:Name="LightThemeRadio" GroupName="Theme" Content="Light" Checked="OnThemeRadioChecked" Margin="0,0,0,16" />
+
+            <TextBlock Text="General" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8" />
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <ToggleButton x:Name="ShiftEnterToggle" Style="{StaticResource ToggleSwitchStyle}"
                               Click="OnShiftEnterToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
-                <TextBlock Text="Use Shift+Enter for newlines" Foreground="White" VerticalAlignment="Center" />
+                <TextBlock Text="Use Shift+Enter for newlines" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock Text="When on, Shift+Enter inserts a newline in a session instead of Ctrl+Enter."
-                       Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
 
-            <TextBlock Text="Sessions" Foreground="Gray" FontSize="12" FontWeight="Bold" Margin="0,20,0,8" />
+            <TextBlock Text="Sessions" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,20,0,8" />
 
-            <TextBlock Text="Default root folder" Foreground="White" Margin="0,0,0,4" />
+            <TextBlock Text="Default root folder" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -54,15 +68,15 @@
                 <Button Grid.Column="1" Content="Browse..." Click="OnBrowseDefaultRootFolderClick" Margin="8,0,0,0" />
             </Grid>
             <TextBlock Text="New sessions default to this folder (see Add Session's form)."
-                       Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,16" />
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,16" />
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <ToggleButton x:Name="WorktreeToggle" Style="{StaticResource ToggleSwitchStyle}"
                               Click="OnWorktreeToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
-                <TextBlock Text="Start new sessions with a git worktree" Foreground="White" VerticalAlignment="Center" />
+                <TextBlock Text="Start new sessions with a git worktree" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock Text="Pre-checks &quot;Create a git worktree&quot; in the Add Session form - still editable per session."
-                       Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
         </StackPanel>
     </Grid>
 </UserControl>

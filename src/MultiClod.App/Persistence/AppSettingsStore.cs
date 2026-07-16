@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MultiClod.App.Persistence;
 
@@ -14,6 +15,10 @@ public sealed class AppSettingsStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        // Stores AppTheme (and any future enum) as its member name rather than a numeric ordinal,
+        // so settings.json stays readable and doesn't silently reinterpret an old value if the
+        // enum's declaration order ever changes.
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
     private readonly string filePath;

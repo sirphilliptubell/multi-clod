@@ -147,6 +147,14 @@ public sealed class WpfTerminalPane : ITerminalPane
         };
 
         this.control.SetTheme(nativeTheme, theme.FontFamily, theme.FontSize, theme.Background);
+
+        // SetTheme alone only affects cells written after this call - already-rendered scrollback
+        // (e.g. an existing session's whole prior conversation) keeps its old baked-in colors
+        // until something forces a full repaint. A same-size resize is a cheap, safe way to force
+        // one - it mirrors what already happens whenever the hosting window itself is resized, and
+        // TriggerResize is a no-op (0,0) if the control hasn't been laid out yet, so this is also
+        // harmless when ApplyTheme runs on a brand-new pane at launch, before Attach.
+        this.control.TriggerResize(this.control.RenderSize);
     }
 
     public void Focus()

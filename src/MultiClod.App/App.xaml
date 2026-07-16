@@ -23,8 +23,8 @@
                 still using the unstyled (light) defaults.
             -->
             <Style TargetType="ContextMenu">
-                <Setter Property="Background" Value="#2A2A2A" />
-                <Setter Property="BorderBrush" Value="#3F3F3F" />
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ContextMenu">
@@ -38,7 +38,7 @@
             </Style>
 
             <Style TargetType="MenuItem">
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
                 <Setter Property="Padding" Value="12,6" />
                 <Setter Property="Template">
                     <Setter.Value>
@@ -51,16 +51,16 @@
                                     </Grid.ColumnDefinitions>
                                     <ContentPresenter Grid.Column="0" ContentSource="Header" VerticalAlignment="Center"
                                                        TextElement.Foreground="{TemplateBinding Foreground}" />
-                                    <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" Foreground="Gray"
+                                    <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
                                                Margin="24,0,0,0" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsHighlighted" Value="True">
-                                    <Setter TargetName="Bg" Property="Background" Value="#3A96DD" />
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource Theme.Brush.Accent}" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Foreground" Value="Gray" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.SecondaryForeground}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -72,7 +72,7 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Separator">
-                            <Border Height="1" Background="#3F3F3F" Margin="4,4" />
+                            <Border Height="1" Background="{DynamicResource Theme.Brush.Border}" Margin="4,4" />
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
