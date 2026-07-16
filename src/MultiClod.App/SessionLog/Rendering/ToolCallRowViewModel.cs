@@ -5,19 +5,13 @@ namespace MultiClod.App.SessionLog.Rendering;
 /// <summary>
 /// A tool_use block merged with its later-arriving tool_result (matched by tool_use_id) into one
 /// stable row. Starts pending; ApplyToolResult mutates fields and raises property-changed without
-/// ever touching IsExpanded/IsAdditionalPropertiesExpanded, so an already-expanded row doesn't
+/// ever touching IsExpanded/IsSourceExpanded, so an already-expanded row doesn't
 /// collapse out from under the user the instant its result shows up. Failure is read from the
 /// tool_result content block's "is_error" field (Anthropic Messages API's documented field on
 /// tool_result blocks) - absent/false means success.
 /// </summary>
 public sealed class ToolCallRowViewModel : TranscriptRowViewModel
 {
-    private static readonly IReadOnlySet<string> ToolUseConsumedPaths =
-        new HashSet<string>(CommonEntryFields.BaseConsumedPaths) { "message.content", "message.role" };
-
-    private static readonly IReadOnlySet<string> ToolResultConsumedPaths =
-        new HashSet<string>(CommonEntryFields.BaseConsumedPaths) { "message.content", "message.role", "toolUseResult" };
-
     private readonly JsonElement toolUseLineRoot;
     private readonly JsonElement? toolInput;
     private readonly string inputPreview;
@@ -87,21 +81,6 @@ public sealed class ToolCallRowViewModel : TranscriptRowViewModel
             };
 
             return $"{body}\n\n{resultLabel}:\n{resultText}";
-        }
-    }
-
-    public override string AdditionalPropertiesJson
-    {
-        get
-        {
-            var toolUseLeftover = JsonLeftoverComputer.ComputeLeftoverJson(this.toolUseLineRoot, ToolUseConsumedPaths);
-            if (this.toolResultLineRoot is not { } resultRoot)
-            {
-                return toolUseLeftover;
-            }
-
-            var toolResultLeftover = JsonLeftoverComputer.ComputeLeftoverJson(resultRoot, ToolResultConsumedPaths);
-            return $"// tool_use:\n{toolUseLeftover}\n\n// tool_result:\n{toolResultLeftover}";
         }
     }
 

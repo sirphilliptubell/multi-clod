@@ -10,9 +10,6 @@ namespace MultiClod.App.SessionLog.Rendering;
 /// </summary>
 public sealed class SystemMetaRowViewModel : TranscriptRowViewModel
 {
-    private static readonly IReadOnlySet<string> ConsumedPaths =
-        new HashSet<string>(CommonEntryFields.BaseConsumedPaths) { "subtype" };
-
     private readonly JsonElement lineRoot;
     private readonly string typeValue;
 
@@ -26,8 +23,6 @@ public sealed class SystemMetaRowViewModel : TranscriptRowViewModel
     public override string SummaryText => TranscriptSummary.WithTimestamp(this.Timestamp, this.BuildBody());
 
     public override string ExpandedBodyText => this.BuildBody();
-
-    public override string AdditionalPropertiesJson => JsonLeftoverComputer.ComputeLeftoverJson(this.lineRoot, ConsumedPaths);
 
     public override string CopyableJson => TranscriptJsonFormatting.Format(this.lineRoot);
 

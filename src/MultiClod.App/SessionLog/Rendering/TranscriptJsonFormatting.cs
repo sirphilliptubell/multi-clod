@@ -3,9 +3,9 @@ using System.Text.Json;
 namespace MultiClod.App.SessionLog.Rendering;
 
 /// <summary>
-/// Shared JSON formatting for rows: full pretty-printed output for Additional Properties/copy, and
+/// Shared JSON formatting for rows: full pretty-printed output for the Source expander/copy, and
 /// a truncated single-line form for a row's collapsed summary (e.g. a tool call's input preview) -
-/// full fidelity always belongs in Additional Properties/CopyableJson, never the summary line.
+/// full fidelity always belongs in CopyableJson, never the summary line.
 /// </summary>
 internal static class TranscriptJsonFormatting
 {

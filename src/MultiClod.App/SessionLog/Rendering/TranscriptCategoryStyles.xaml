@@ -55,7 +55,7 @@
         <Setter Property="SelectionBrush" Value="#3A96DD" />
     </Style>
 
-    <Style x:Key="TranscriptAdditionalPropertiesTextStyle" TargetType="TextBox" BasedOn="{StaticResource TranscriptSelectableTextStyle}">
+    <Style x:Key="TranscriptSourceTextStyle" TargetType="TextBox" BasedOn="{StaticResource TranscriptSelectableTextStyle}">
         <Setter Property="FontFamily" Value="Consolas" />
         <Setter Property="Foreground" Value="#AAAAAA" />
         <Setter Property="Background" Value="#141414" />
@@ -76,8 +76,8 @@
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
                         <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" Foreground="#DDDDDD" />
-                        <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
-                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
+                        <Expander Header="Source" IsExpanded="{Binding IsSourceExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
+                            <TextBox Style="{StaticResource TranscriptSourceTextStyle}" Text="{Binding CopyableJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -102,8 +102,8 @@
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
                         <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" FontStyle="Italic" Foreground="#B9AEDD" />
-                        <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
-                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
+                        <Expander Header="Source" IsExpanded="{Binding IsSourceExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
+                            <TextBox Style="{StaticResource TranscriptSourceTextStyle}" Text="{Binding CopyableJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -129,8 +129,8 @@
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
                         <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" FontFamily="Consolas" Foreground="#DDDDDD" />
-                        <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
-                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
+                        <Expander Header="Source" IsExpanded="{Binding IsSourceExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
+                            <TextBox Style="{StaticResource TranscriptSourceTextStyle}" Text="{Binding CopyableJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -160,8 +160,8 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
-                        <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Foreground="Gray">
-                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
+                        <Expander Header="Source" IsExpanded="{Binding IsSourceExpanded, Mode=TwoWay}" Foreground="Gray">
+                            <TextBox Style="{StaticResource TranscriptSourceTextStyle}" Text="{Binding CopyableJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>

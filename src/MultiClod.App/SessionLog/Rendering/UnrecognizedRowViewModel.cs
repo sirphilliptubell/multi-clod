@@ -24,8 +24,6 @@ public sealed class UnrecognizedRowViewModel : TranscriptRowViewModel
 
     public override string ExpandedBodyText => this.rawText;
 
-    public override string AdditionalPropertiesJson => "{}";
-
     public override string CopyableJson => this.validJsonWithNoType is { } root
         ? TranscriptJsonFormatting.Format(root)
         : this.rawText;

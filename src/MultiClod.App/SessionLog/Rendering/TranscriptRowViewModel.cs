@@ -7,12 +7,12 @@ namespace MultiClod.App.SessionLog.Rendering;
 /// Base for one rendered row in the transcript viewer. A row is a stable instance for its whole
 /// lifetime - a tool-call row mutates its own fields in place when its result arrives (see
 /// ToolCallRowViewModel.ApplyToolResult) rather than being replaced, so a user's
-/// IsExpanded/IsAdditionalPropertiesExpanded choice survives a live update untouched.
+/// IsExpanded/IsSourceExpanded choice survives a live update untouched.
 /// </summary>
 public abstract class TranscriptRowViewModel : INotifyPropertyChanged
 {
     private bool isExpanded;
-    private bool isAdditionalPropertiesExpanded;
+    private bool isSourceExpanded;
 
     protected TranscriptRowViewModel(TranscriptRowCategory category, DateTimeOffset? timestamp)
     {
@@ -29,12 +29,13 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
     public abstract string SummaryText { get; }
 
     // The full content shown when a row is expanded - distinct from SummaryText (truncated, for
-    // the collapsed row) and AdditionalPropertiesJson (leftover JSON fields, in its own nested
-    // expander). E.g. a message row's full untruncated text, or a tool call's full input/result.
+    // the collapsed row) and CopyableJson (the entry's complete, untouched raw JSON, shown in its
+    // own nested "Source" expander). E.g. a message row's full untruncated text, or a tool call's
+    // full input/result.
     public abstract string ExpandedBodyText { get; }
 
-    public abstract string AdditionalPropertiesJson { get; }
-
+    // The complete raw JSON for this row's underlying transcript line(s) - nothing filtered out.
+    // Shown in the "Source" expander and also what the copy-entry-JSON button copies.
     public abstract string CopyableJson { get; }
 
     public bool IsExpanded
@@ -43,19 +44,18 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
         set => this.SetField(ref this.isExpanded, value);
     }
 
-    public bool IsAdditionalPropertiesExpanded
+    public bool IsSourceExpanded
     {
-        get => this.isAdditionalPropertiesExpanded;
-        set => this.SetField(ref this.isAdditionalPropertiesExpanded, value);
+        get => this.isSourceExpanded;
+        set => this.SetField(ref this.isSourceExpanded, value);
     }
 
-    // Called by a subclass after mutating the fields its Summary/AdditionalProperties/Copyable
-    // getters read from (e.g. a tool call's result arriving), so bound UI recomputes them.
+    // Called by a subclass after mutating the fields its Summary/ExpandedBody/Copyable getters
+    // read from (e.g. a tool call's result arriving), so bound UI recomputes them.
     protected void RaiseContentChanged()
     {
         this.RaisePropertyChanged(nameof(this.SummaryText));
         this.RaisePropertyChanged(nameof(this.ExpandedBodyText));
-        this.RaisePropertyChanged(nameof(this.AdditionalPropertiesJson));
         this.RaisePropertyChanged(nameof(this.CopyableJson));
     }
 

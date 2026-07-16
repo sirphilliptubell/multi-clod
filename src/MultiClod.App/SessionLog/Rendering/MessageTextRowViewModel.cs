@@ -6,14 +6,11 @@ namespace MultiClod.App.SessionLog.Rendering;
 /// A "text" or "image" content block from a user/assistant entry. User and Assistant share this
 /// same row type - only Category (and therefore styling) differs, since both are just "a message
 /// with some text" per the approved plan's categorization. An "image" block renders as a fixed
-/// placeholder ("[image attached]") with the full block still reachable via Additional Properties -
-/// no thumbnail decoding for v1.
+/// placeholder ("[image attached]") with the full block still reachable via Source - no thumbnail
+/// decoding for v1.
 /// </summary>
 public sealed class MessageTextRowViewModel : TranscriptRowViewModel
 {
-    private static readonly IReadOnlySet<string> ConsumedPaths =
-        new HashSet<string>(CommonEntryFields.BaseConsumedPaths) { "message.content", "message.role" };
-
     private readonly JsonElement lineRoot;
     private readonly string previewText;
 
@@ -27,8 +24,6 @@ public sealed class MessageTextRowViewModel : TranscriptRowViewModel
     public override string SummaryText => TranscriptSummary.WithTimestamp(this.Timestamp, TextPreview.Truncate(this.previewText));
 
     public override string ExpandedBodyText => this.previewText;
-
-    public override string AdditionalPropertiesJson => JsonLeftoverComputer.ComputeLeftoverJson(this.lineRoot, ConsumedPaths);
 
     public override string CopyableJson => TranscriptJsonFormatting.Format(this.lineRoot);
 }
