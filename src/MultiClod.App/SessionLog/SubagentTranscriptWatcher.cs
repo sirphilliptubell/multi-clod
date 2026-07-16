@@ -24,7 +24,14 @@ public sealed class SubagentTranscriptWatcher : IDisposable
     public SubagentTranscriptWatcher(string sessionDirectory)
     {
         this.subagentsDirectory = Path.Combine(sessionDirectory, "subagents");
-        this.BeginWaiting();
+
+        // Deferred rather than called inline: BeginWaiting can synchronously reach all the way
+        // through to OnDirectoryExists if the subagents directory already exists (i.e. agents
+        // already ran before this window opened), which would raise SubagentDiscovered for every
+        // pre-existing agent before the caller has had any chance to subscribe. Queuing it ensures
+        // every event always has a subscriber listening - same fix as TranscriptFileTailer's
+        // constructor.
+        ThreadPool.QueueUserWorkItem(_ => this.BeginWaiting());
     }
 
     public event Action<SessionLogSourceViewModel>? SubagentDiscovered;
