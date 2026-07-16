@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using MultiClod.App.Persistence;
+using MultiClod.App.Theming;
 
 namespace MultiClod.App.Settings;
 
@@ -46,6 +47,12 @@ public partial class SettingsView : UserControl
     /// </summary>
     internal event EventHandler<ClaudePermissionMode>? DefaultPermissionModeChanged;
 
+    /// <summary>
+    /// Raised only in response to the user picking a different theme radio button - MainWindow
+    /// persists it and applies it (see ThemeManager).
+    /// </summary>
+    internal event EventHandler<AppTheme>? ThemeChanged;
+
     internal void LoadSettings(AppSettings settings)
     {
         this.suppressChangeEvents = true;
@@ -62,6 +69,7 @@ public partial class SettingsView : UserControl
             _ => 0,
         };
 
+        this.GetThemeRadio(settings.Theme).IsChecked = true;
         this.suppressChangeEvents = false;
     }
 
@@ -114,4 +122,28 @@ public partial class SettingsView : UserControl
         var tag = (string)((ComboBoxItem)this.PermissionModeCombo.SelectedItem).Tag;
         this.DefaultPermissionModeChanged?.Invoke(this, Enum.Parse<ClaudePermissionMode>(tag));
     }
+
+    private void OnThemeRadioChecked(object sender, RoutedEventArgs e)
+    {
+        if (this.suppressChangeEvents)
+        {
+            return;
+        }
+
+        var theme = sender switch
+        {
+            var s when s == this.DarkLowContrastThemeRadio => AppTheme.DarkLowContrast,
+            var s when s == this.LightThemeRadio => AppTheme.Light,
+            _ => AppTheme.Dark,
+        };
+
+        this.ThemeChanged?.Invoke(this, theme);
+    }
+
+    private RadioButton GetThemeRadio(AppTheme theme) => theme switch
+    {
+        AppTheme.DarkLowContrast => this.DarkLowContrastThemeRadio,
+        AppTheme.Light => this.LightThemeRadio,
+        _ => this.DarkThemeRadio,
+    };
 }

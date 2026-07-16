@@ -15,8 +15,10 @@ public sealed class AppSettingsStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        // Otherwise ClaudePermissionMode round-trips as a bare int in settings.json - unreadable
-        // to a user poking at the file, and silent about which mode 0/1/2/3 even mean.
+        // Stores enum settings (ClaudePermissionMode, AppTheme, ...) as their member name rather
+        // than a numeric ordinal - otherwise they round-trip as a bare int in settings.json,
+        // unreadable to a user poking at the file, and silent about which mode 0/1/2/3 even mean,
+        // or liable to silently reinterpret an old value if an enum's declaration order changes.
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 

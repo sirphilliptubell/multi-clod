@@ -1,3 +1,5 @@
+using MultiClod.App.Theming;
+
 namespace MultiClod.App.Persistence;
 
 /// <summary>
@@ -9,6 +11,11 @@ namespace MultiClod.App.Persistence;
 /// </summary>
 public sealed record AppSettings
 {
+    /// <summary>
+    /// App-wide color scheme - see Theming\ThemeManager for how this is applied.
+    /// </summary>
+    public AppTheme Theme { get; init; } = AppTheme.Dark;
+
     /// <summary>
     /// When true, Shift+Enter inserts a newline in a running session's terminal instead of Enter's
     /// normal submit behavior - a stand-in for Ctrl+Enter, which Claude Code also accepts for the

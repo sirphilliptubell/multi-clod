@@ -6,29 +6,29 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
-        Background="#1E1E1E">
-    <!-- Same SystemColors/TextBox/Button dark-theme overrides as ImportSessionWindow.xaml - not
+        Background="{DynamicResource Theme.Brush.WindowBackground}">
+    <!-- Same SystemColors/TextBox/Button theme overrides as ImportSessionWindow.xaml - not
          shared via a merged dictionary since each window's font sizing/padding differs slightly
          and there are only two call sites. -->
     <Window.Resources>
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
         <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="CaretBrush" Value="White" />
-            <Setter Property="BorderBrush" Value="#3F3F3F" />
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="#3F3F3F" />
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
             <Setter Property="Padding" Value="10,6" />
         </Style>
 
@@ -41,12 +41,12 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="Bd" Background="#2A2A2A" Padding="{TemplateBinding Padding}">
+                        <Border x:Name="Bd" Background="{DynamicResource Theme.Brush.ControlBackground}" Padding="{TemplateBinding Padding}">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#3A96DD" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Brush.Accent}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -55,9 +55,9 @@
         </Style>
 
         <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="#3F3F3F" />
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -74,7 +74,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="24" />
                                                 </Grid.ColumnDefinitions>
-                                                <Path Grid.Column="1" Data="M0,0 L4,4 L8,0 Z" Fill="White"
+                                                <Path Grid.Column="1" Data="M0,0 L4,4 L8,0 Z" Fill="{DynamicResource Theme.Brush.PrimaryForeground}"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Grid>
                                         </Border>
@@ -89,7 +89,7 @@
                                               HorizontalAlignment="Left" VerticalAlignment="Center" />
                             <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                                    PopupAnimation="Slide" IsOpen="{TemplateBinding IsDropDownOpen}">
-                                <Border Background="#2A2A2A" BorderBrush="#3F3F3F" BorderThickness="1"
+                                <Border Background="{DynamicResource Theme.Brush.ControlBackground}" BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="1"
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="200">
                                     <ScrollViewer>
                                         <ItemsPresenter />
@@ -103,15 +103,15 @@
         </Style>
 
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
         </Style>
     </Window.Resources>
 
-    <StackPanel Background="#1E1E1E" Margin="16">
-        <TextBlock Text="Session name" Foreground="White" Margin="0,0,0,4" />
+    <StackPanel Background="{DynamicResource Theme.Brush.WindowBackground}" Margin="16">
+        <TextBlock Text="Session name" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
         <TextBox x:Name="NameBox" TextChanged="OnNameTextChanged" />
 
-        <TextBlock Text="Folder" Foreground="White" Margin="0,14,0,4" />
+        <TextBlock Text="Folder" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -129,14 +129,14 @@
             <CheckBox x:Name="WorktreeCheckBox" Content="Create a git worktree for this session"
                       Margin="0,18,0,0" Checked="OnWorktreeCheckedChanged" Unchecked="OnWorktreeCheckedChanged" />
 
-            <TextBlock Text="Worktree name (new branch)" Foreground="White" Margin="0,14,0,4" />
+            <TextBlock Text="Worktree name (new branch)" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
             <TextBox x:Name="WorktreeNameBox" IsEnabled="False" />
 
-            <TextBlock Text="Branch to create it from" Foreground="White" Margin="0,14,0,4" />
+            <TextBlock Text="Branch to create it from" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
             <ComboBox x:Name="BranchCombo" IsEnabled="False" />
         </StackPanel>
 
-        <TextBlock x:Name="ErrorText" Foreground="OrangeRed" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />
+        <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Theme.Brush.Error}" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
             <Button Content="Add" Width="80" IsDefault="True" Click="OnAddClick" Margin="0,0,8,0" />
