@@ -162,6 +162,12 @@ public partial class MainWindow : Window
     {
         this.Loaded -= this.OnLoaded;
 
+        // Belt-and-suspenders alongside WPF's own Show() activation - under Remote Desktop, the
+        // brief foreground-grant a freshly launched process gets can expire before this window
+        // actually appears (worse on an unoptimized Debug build), leaving it open behind everything
+        // else with just a taskbar flash. See ForceForeground's remarks.
+        ForceForeground.Apply(this);
+
         this.RestoreOpenTabs(this.savedLayout);
 
         if (Application.Current is App app)
