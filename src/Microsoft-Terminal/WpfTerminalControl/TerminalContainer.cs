@@ -63,6 +63,15 @@ namespace Microsoft.Terminal.Wpf
         internal event EventHandler<int> UserScrolled;
 
         /// <summary>
+        /// Event that is fired once the native terminal hwnd has actually been created (see
+        /// BuildWindowCore). WPF's HwndHost defers this until the control is arranged, which never
+        /// happens while an ancestor is Visibility.Collapsed - so a SetTheme call made beforehand
+        /// (e.g. on a freshly-launched, not-yet-shown session pane) silently has nothing to act on.
+        /// Consumers that called SetTheme early should listen for this and call it again.
+        /// </summary>
+        internal event EventHandler WindowCreated;
+
+        /// <summary>
         /// Gets or sets a value indicating whether if the renderer should automatically resize to fill the control
         /// on user action.
         /// </summary>
@@ -318,6 +327,8 @@ namespace Microsoft.Terminal.Wpf
             {
                 NativeMethods.TerminalDpiChanged(this.terminal, (int)dpiScale.PixelsPerInchX);
             }
+
+            this.WindowCreated?.Invoke(this, EventArgs.Empty);
 
             return new HandleRef(this, this.hwnd);
         }
