@@ -35,6 +35,15 @@ public partial class MainWindow : Window
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
 
+    // Sessions currently open as tabs in the main panel, in tab-strip order - see OpenTab/CloseTab.
+    // Bound to TabStrip.ItemsSource in the ctor. Decoupled from Tree.SelectedItem: selecting a
+    // Project node in the tree leaves this (and whichever tab is active) untouched.
+    private readonly ObservableCollection<SessionNodeViewModel> openTabs = new();
+
+    // Captured in the ctor for RestoreOpenTabs, called from OnLoaded once SessionViewHost's
+    // terminal control has a real HWND - same deferral rationale as the --from-here handling below.
+    private readonly WindowLayout? savedLayout;
+
     // Title as set by the ctor (includes the "(Debug)" suffix), before any update-status suffix -
     // see OnUpdateStatusChanged. Captured once rather than stripping a suffix back off later.
     private readonly string baseTitle;
@@ -105,8 +114,11 @@ public partial class MainWindow : Window
         this.controller.Load();
         this.Tree.ItemsSource = this.controller.RootNodes;
 
+        this.TabStrip.ItemsSource = this.openTabs;
+
         this.layoutStore = new WindowLayoutStore();
-        ApplyWindowLayout(this, this.TreeColumn, this.layoutStore.Load());
+        this.savedLayout = this.layoutStore.Load();
+        ApplyWindowLayout(this, this.TreeColumn, this.savedLayout);
 
         this.settingsStore = new AppSettingsStore();
         this.appSettings = this.settingsStore.Load();
@@ -146,6 +158,8 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         this.Loaded -= this.OnLoaded;
+
+        this.RestoreOpenTabs(this.savedLayout);
 
         if (Application.Current is App app)
         {
@@ -301,16 +315,14 @@ public partial class MainWindow : Window
         node.DetachLiveSession();
     }
 
+    // Selecting a Session node opens/activates its tab; selecting a Project node (or nothing, e.g.
+    // after a delete) is deliberately a no-op here - it leaves whichever tab is currently active
+    // untouched, same as clicking a folder in an editor's sidebar doesn't blank the open editor.
     private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (this.suppressSelectionSideEffects)
         {
             return;
-        }
-
-        if (e.OldValue is SessionNodeViewModel { LiveSession: { } oldSession })
-        {
-            oldSession.Host.Pane.View.Visibility = Visibility.Collapsed;
         }
 
         if (e.NewValue is SessionNodeViewModel session)
@@ -319,40 +331,156 @@ public partial class MainWindow : Window
             // done its job. No-ops on a dormant node or one still Working.
             session.ClearLatchedActivity();
 
-            if (!session.IsRunning)
-            {
-                this.controller.RevalidateBeforeLaunch(session);
-                if (session.IsInvalid)
-                {
-                    this.PlaceholderText.Visibility = Visibility.Collapsed;
-                    this.ErrorText.Text = session.ToolTipText;
-                    this.ErrorText.Visibility = Visibility.Visible;
-                    return;
-                }
+            this.OpenTab(session);
+        }
+    }
 
-                this.LaunchSession(session);
+    // Ensures `session` has a tab in the strip and makes it the active one. Reselecting the same
+    // tree node twice in a row (or via RestoreOpenTabs/HandleFromHereRequest) never changes
+    // TabStrip.SelectedItem, so ActivateTab is called directly in that case since
+    // OnTabStripSelectionChanged wouldn't otherwise fire.
+    private void OpenTab(SessionNodeViewModel session)
+    {
+        if (!this.openTabs.Contains(session))
+        {
+            this.openTabs.Add(session);
+        }
+
+        if (ReferenceEquals(this.TabStrip.SelectedItem, session))
+        {
+            this.ActivateTab(session);
+        }
+        else
+        {
+            this.TabStrip.SelectedItem = session;
+        }
+    }
+
+    // Launches (if needed) and shows the given tab's pane. The sole place that flips a pane
+    // Visible - callers (OpenTab, OnTabStripSelectionChanged, RefreshSessionsCanvas) all funnel
+    // through here.
+    private void ActivateTab(SessionNodeViewModel session)
+    {
+        if (!session.IsRunning)
+        {
+            this.controller.RevalidateBeforeLaunch(session);
+            if (session.IsInvalid)
+            {
+                this.PlaceholderText.Visibility = Visibility.Collapsed;
+                this.ErrorText.Text = session.ToolTipText;
+                this.ErrorText.Visibility = Visibility.Visible;
+                return;
             }
 
-            this.ErrorText.Visibility = Visibility.Collapsed;
-            this.PlaceholderText.Visibility = Visibility.Collapsed;
-            session.LiveSession!.Host.Pane.View.Visibility = Visibility.Visible;
+            this.LaunchSession(session);
+        }
 
-            // Deferred rather than called inline: Pane.Focus() bottoms out in
-            // TerminalContainer_GotFocus, which calls native SetFocus on the terminal's hwnd -
-            // bypassing WPF's focus system. We're still nested inside the very TreeViewItem
-            // GotFocus/Selected dispatch that raised this SelectedItemChanged event, so stealing
-            // real Win32 focus now (before that dispatch unwinds) leaves WPF's FocusManager out of
-            // sync with what's actually focused. Left alone, this causes exactly the ancestor-
-            // misrouting bug described on OnItemPreviewMouseLeftButtonDown above: the following
-            // click resolves selection to the Project row instead of the session actually clicked.
-            // Posting the focus call lets the current dispatch finish first. Priority must be below
-            // Render (DispatcherPriority.Normal, the default, is numerically *higher* than Render -
-            // it would run before the layout pass that the Visibility flip just above schedules,
-            // and focusing a control before it's actually been laid out/rendered silently fails).
-            // ContextIdle guarantees the pending layout/render for the pane just made Visible has
-            // completed first.
-            var liveSession = session.LiveSession;
-            this.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => liveSession.Host.Pane.Focus()));
+        this.ErrorText.Visibility = Visibility.Collapsed;
+        this.PlaceholderText.Visibility = Visibility.Collapsed;
+        session.LiveSession!.Host.Pane.View.Visibility = Visibility.Visible;
+
+        // Deferred rather than called inline: Pane.Focus() bottoms out in
+        // TerminalContainer_GotFocus, which calls native SetFocus on the terminal's hwnd -
+        // bypassing WPF's focus system. We're still nested inside the very TreeViewItem/ListBoxItem
+        // GotFocus/Selected dispatch that raised this selection-changed event, so stealing real
+        // Win32 focus now (before that dispatch unwinds) leaves WPF's FocusManager out of sync with
+        // what's actually focused. Left alone, this causes exactly the ancestor-misrouting bug
+        // described on OnItemPreviewMouseLeftButtonDown above: the following click resolves
+        // selection to the Project row instead of the session actually clicked. Posting the focus
+        // call lets the current dispatch finish first. Priority must be below Render
+        // (DispatcherPriority.Normal, the default, is numerically *higher* than Render - it would
+        // run before the layout pass that the Visibility flip just above schedules, and focusing a
+        // control before it's actually been laid out/rendered silently fails). ContextIdle
+        // guarantees the pending layout/render for the pane just made Visible has completed first.
+        var liveSession = session.LiveSession;
+        this.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => liveSession.Host.Pane.Focus()));
+    }
+
+    // Fires on both user clicks on a tab and the programmatic TabStrip.SelectedItem assignments in
+    // OpenTab/CloseTab.
+    private void OnTabStripSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.RemovedItems.Count > 0 && e.RemovedItems[0] is SessionNodeViewModel { LiveSession: { } oldSession })
+        {
+            oldSession.Host.Pane.View.Visibility = Visibility.Collapsed;
+        }
+
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
+        {
+            session.ClearLatchedActivity();
+            this.ActivateTab(session);
+
+            // Keep the tree selection following the active tab (without recursing back into
+            // OpenTab, which would just re-select the already-active tab) - so the tree's
+            // highlighted row always matches what's on screen.
+            if (!ReferenceEquals(this.Tree.SelectedItem, session))
+            {
+                this.suppressSelectionSideEffects = true;
+                session.IsSelected = true;
+                this.suppressSelectionSideEffects = false;
+            }
+        }
+        else
+        {
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.PlaceholderText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void OnCloseTabClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SessionNodeViewModel session)
+        {
+            this.CloseTab(session);
+        }
+    }
+
+    // Removes `session`'s tab from the strip. Deliberately does not stop the session - it keeps
+    // running in the background and reopens as a tab next time it's selected in the tree (or
+    // restored on next launch - see RestoreOpenTabs). "Stop" in the tree's context menu is the only
+    // way to actually kill it.
+    private void CloseTab(SessionNodeViewModel session)
+    {
+        var index = this.openTabs.IndexOf(session);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var wasActive = ReferenceEquals(this.TabStrip.SelectedItem, session);
+        this.openTabs.RemoveAt(index);
+
+        if (!wasActive)
+        {
+            return;
+        }
+
+        if (this.openTabs.Count > 0)
+        {
+            // Prefer the tab that slid into this index (i.e. what was the next tab), falling back
+            // to the new last tab - matches a browser/editor tab strip's close behavior.
+            this.TabStrip.SelectedItem = this.openTabs[Math.Min(index, this.openTabs.Count - 1)];
+        }
+        else if (session.IsSelected)
+        {
+            // No tabs left to fall back to. Removing the last tab already cleared
+            // TabStrip.SelectedItem to null (via OnTabStripSelectionChanged, triggered by the
+            // ObservableCollection change above), which shows the placeholder - but the tree still
+            // shows this node selected. Deselect it too, so clicking it again actually fires a new
+            // SelectedItemChanged (WPF doesn't raise one for reselecting an already-selected node)
+            // and reopens its tab instead of silently doing nothing.
+            session.IsSelected = false;
+        }
+    }
+
+    // Re-syncs the canvas with whatever tab is currently active - used when returning to the
+    // Sessions rail section (see SetRailSection), where simply replaying the tree selection would
+    // miss the case where a Project node (not the active tab's session) is what's tree-selected.
+    private void RefreshSessionsCanvas()
+    {
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
+        {
+            this.ActivateTab(session);
         }
         else
         {
@@ -397,6 +525,7 @@ public partial class MainWindow : Window
         this.SettingsAccentBar.Visibility = section == RailSection.Settings ? Visibility.Visible : Visibility.Collapsed;
         this.Tree.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.SkillsList.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.TabStripHost.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
 
         // Both cleared unconditionally here - the branches below re-show whichever one actually
         // applies (RefreshSkillsCanvas may re-show SkillDetail; the Settings branch always shows
@@ -406,10 +535,9 @@ public partial class MainWindow : Window
 
         if (section == RailSection.Skills)
         {
-            // SessionViewHost's children are never hidden as a whole - only whichever pane
-            // OnTreeSelectedItemChanged last made Visible - so that pane needs hiding explicitly
-            // here; it's naturally re-shown by the replayed OnTreeSelectedItemChanged below when
-            // switching back.
+            // SessionViewHost's children are never hidden as a whole - only whichever pane is the
+            // active tab - so that pane needs hiding explicitly here; RefreshSessionsCanvas
+            // naturally re-shows it when switching back.
             this.HideActiveSessionPane();
             this.EnsureSkillsLoaded();
             this.RefreshSkillsCanvas();
@@ -423,10 +551,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            // oldValue is deliberately null - HideActiveSessionPane already hid whatever pane was
-            // active before switching away from Sessions, so there's nothing left for
-            // OnTreeSelectedItemChanged's own e.OldValue handling to hide again.
-            this.OnTreeSelectedItemChanged(this, new RoutedPropertyChangedEventArgs<object>(null!, this.Tree.SelectedItem));
+            this.RefreshSessionsCanvas();
         }
     }
 
@@ -492,7 +617,7 @@ public partial class MainWindow : Window
 
     private void HideActiveSessionPane()
     {
-        if (this.Tree.SelectedItem is SessionNodeViewModel { LiveSession: { } session })
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel { LiveSession: { } session })
         {
             session.Host.Pane.View.Visibility = Visibility.Collapsed;
         }
@@ -938,19 +1063,24 @@ public partial class MainWindow : Window
 
         this.controller.RelocateWorkingDirectory(session, folderDialog.FolderName);
 
-        // Refresh the pane area if this is the node currently being looked at - relocating can
-        // clear (or introduce) an error without the tree selection itself changing.
-        if (ReferenceEquals(this.Tree.SelectedItem, session))
+        // Refresh the pane area if this is the active tab - relocating can clear (or introduce) an
+        // error without the active tab itself changing.
+        if (ReferenceEquals(this.TabStrip.SelectedItem, session))
         {
-            this.OnTreeSelectedItemChanged(this, new RoutedPropertyChangedEventArgs<object>(session, session));
+            this.ActivateTab(session);
         }
     }
 
     private void OnDelete(TreeNodeViewModel node)
     {
-        if (node is SessionNodeViewModel { IsRunning: true } session)
+        if (node is SessionNodeViewModel session)
         {
-            this.StopSession(session);
+            this.CloseTab(session);
+
+            if (session.IsRunning)
+            {
+                this.StopSession(session);
+            }
         }
 
         if (!this.controller.TryDelete(node, out var error))
@@ -1003,6 +1133,15 @@ public partial class MainWindow : Window
             ? new Rect(this.Left, this.Top, this.Width, this.Height)
             : this.RestoreBounds;
 
+        // Only persist tabs whose session survived the drop-if-abandoned pass above - an id that
+        // no longer exists next launch would just be silently skipped by RestoreOpenTabs anyway,
+        // but filtering here keeps window-layout.json honest about what's actually still around.
+        var survivingSessionIds = this.controller.AllSessionNodes().Select(n => n.Id).ToHashSet();
+        var openTabIds = this.openTabs.Select(s => s.Id).Where(survivingSessionIds.Contains).ToList();
+        var activeTabId = this.TabStrip.SelectedItem is SessionNodeViewModel { } activeSession && survivingSessionIds.Contains(activeSession.Id)
+            ? activeSession.Id
+            : (Guid?)null;
+
         this.layoutStore.Save(new WindowLayout
         {
             Left = bounds.Left,
@@ -1011,6 +1150,8 @@ public partial class MainWindow : Window
             Height = bounds.Height,
             IsMaximized = this.WindowState == WindowState.Maximized,
             TreeColumnWidth = this.TreeColumn.Width.Value,
+            OpenSessionTabIds = openTabIds,
+            ActiveSessionTabId = activeTabId,
         });
     }
 
@@ -1044,6 +1185,64 @@ public partial class MainWindow : Window
         if (layout.IsMaximized)
         {
             window.WindowState = WindowState.Maximized;
+        }
+    }
+
+    /// <summary>
+    /// Reopens (and relaunches, running in the background) whatever tabs were open when the window
+    /// last closed - see OnClosing. Called from OnLoaded, same HWND-readiness constraint as
+    /// HandleFromHereRequest below: starting a session before SessionViewHost's terminal control
+    /// has a real HWND silently never attaches a client process to it.
+    /// </summary>
+    private void RestoreOpenTabs(WindowLayout? layout)
+    {
+        if (layout is null || layout.OpenSessionTabIds.Count == 0)
+        {
+            return;
+        }
+
+        var sessionsById = this.controller.AllSessionNodes().ToDictionary(n => n.Id);
+
+        foreach (var id in layout.OpenSessionTabIds)
+        {
+            if (!sessionsById.TryGetValue(id, out var session) || this.openTabs.Contains(session))
+            {
+                continue;
+            }
+
+            this.controller.RevalidateBeforeLaunch(session);
+            if (session.IsInvalid)
+            {
+                // Drop a tab whose session no longer validates (e.g. its working directory is
+                // gone) rather than restoring it just to immediately show an error nobody asked to
+                // see yet.
+                continue;
+            }
+
+            this.LaunchSession(session);
+            this.openTabs.Add(session);
+        }
+
+        if (this.openTabs.Count == 0)
+        {
+            return;
+        }
+
+        var active = layout.ActiveSessionTabId is { } activeId
+            ? this.openTabs.FirstOrDefault(s => s.Id == activeId) ?? this.openTabs[0]
+            : this.openTabs[0];
+
+        // Selecting the tree node runs the usual OnTreeSelectedItemChanged -> OpenTab path, which
+        // makes this the active tab and shows its (already-launched, per the loop above) pane.
+        ExpandAncestors(active);
+        active.IsSelected = true;
+    }
+
+    private static void ExpandAncestors(TreeNodeViewModel node)
+    {
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+        {
+            parent.IsExpanded = true;
         }
     }
 

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace MultiClod.App.Persistence;
 
 /// <summary>
@@ -18,4 +21,11 @@ public sealed class WindowLayout
     public bool IsMaximized { get; init; }
 
     public double TreeColumnWidth { get; init; } = 220;
+
+    // Session tabs open in the main panel's tab strip when the window last closed, in tab order -
+    // see MainWindow.RestoreOpenTabs/OnClosing. An id no longer found among current sessions (e.g.
+    // deleted since) is silently skipped on restore.
+    public List<Guid> OpenSessionTabIds { get; init; } = new();
+
+    public Guid? ActiveSessionTabId { get; init; }
 }
