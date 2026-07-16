@@ -13,8 +13,7 @@ internal static class ClaudeProjectPath
 {
     // Verified against this machine's real ~/.claude/projects/ - it's not just \, /, : that get
     // replaced. E.g. C:\_Gits-GS-Github\multi-claude -> C---Gits-GS-Github-multi-claude (the '_'
-    // is gone too), and a folder for Greenshades.Online.Primitives on disk is named
-    // ...-Greenshades-Online-Primitives (dots gone too). Any character outside [A-Za-z0-9-]
+    // is gone too). Any character outside [A-Za-z0-9-]
     // becomes '-'; only hyphens already in the path survive untouched.
     private static readonly Regex NonAlphanumericOrHyphen = new("[^A-Za-z0-9-]", RegexOptions.Compiled);
 
