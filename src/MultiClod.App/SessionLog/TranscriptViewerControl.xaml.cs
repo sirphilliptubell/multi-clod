@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using MultiClod.App.SessionLog.Rendering;
 using MultiClod.App.SessionLog.Tailing;
@@ -20,13 +21,14 @@ public partial class TranscriptViewerControl : UserControl
 {
     private const int InitialLoadBatchSize = 200;
     private const double AtBottomEpsilonPixels = 4.0;
-    private static readonly TimeSpan NewArrivalGlowDuration = TimeSpan.FromMilliseconds(700);
+    private static readonly TimeSpan BannerFadeDuration = TimeSpan.FromMilliseconds(200);
 
     private readonly ObservableCollection<TranscriptRowViewModel> rows = new();
     private TranscriptRowFactory factory = new();
     private TranscriptFileTailer? tailer;
     private bool showAllEvents;
     private bool isAtBottom = true;
+    private int newArrivalsSinceScroll;
 
     public TranscriptViewerControl()
     {
@@ -46,6 +48,8 @@ public partial class TranscriptViewerControl : UserControl
         this.rows.Clear();
         this.factory = new TranscriptRowFactory();
         this.isAtBottom = true;
+        this.newArrivalsSinceScroll = 0;
+        this.HideNewArrivalsBanner();
         this.AccessProblemText.Visibility = Visibility.Collapsed;
 
         if (filePath is null)
@@ -110,23 +114,9 @@ public partial class TranscriptViewerControl : UserControl
         this.rows.Add(row);
         if (!this.isAtBottom)
         {
-            this.FlashNewArrival(row);
+            this.newArrivalsSinceScroll++;
+            this.ShowNewArrivalsBanner();
         }
-    }
-
-    // Self-clearing: the row's IsNewArrival flag drives TranscriptCategoryStyles.xaml's fade
-    // in/out glow trigger, and must return to false afterwards so a later arrival can re-trigger
-    // the same DataTrigger (WPF only fires EnterActions on a false-to-true transition).
-    private void FlashNewArrival(TranscriptRowViewModel row)
-    {
-        row.IsNewArrival = true;
-        var timer = new DispatcherTimer { Interval = NewArrivalGlowDuration };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            row.IsNewArrival = false;
-        };
-        timer.Start();
     }
 
     private void OnAccessProblemChanged(bool hasProblem)
@@ -136,7 +126,32 @@ public partial class TranscriptViewerControl : UserControl
 
     private void OnRowsScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        var wasAtBottom = this.isAtBottom;
         this.isAtBottom = e.VerticalOffset >= this.RowsScrollViewer.ScrollableHeight - AtBottomEpsilonPixels;
+        if (this.isAtBottom && !wasAtBottom)
+        {
+            this.newArrivalsSinceScroll = 0;
+            this.HideNewArrivalsBanner();
+        }
+    }
+
+    private void ShowNewArrivalsBanner()
+    {
+        this.NewArrivalsText.Text = this.newArrivalsSinceScroll == 1 ? "1 new message" : $"{this.newArrivalsSinceScroll} new messages";
+        this.NewArrivalsBanner.Visibility = Visibility.Visible;
+        this.NewArrivalsBanner.BeginAnimation(OpacityProperty, new DoubleAnimation(1.0, BannerFadeDuration));
+    }
+
+    private void HideNewArrivalsBanner()
+    {
+        var animation = new DoubleAnimation(0.0, BannerFadeDuration);
+        animation.Completed += (_, _) => this.NewArrivalsBanner.Visibility = Visibility.Collapsed;
+        this.NewArrivalsBanner.BeginAnimation(OpacityProperty, animation);
+    }
+
+    private void OnNewArrivalsBannerClicked(object sender, MouseButtonEventArgs e)
+    {
+        this.RowsScrollViewer.ScrollToBottom();
     }
 
     private void OnShowAllEventsChanged(object sender, RoutedEventArgs e)

@@ -18,6 +18,25 @@
             <ScrollViewer x:Name="RowsScrollViewer" VerticalScrollBarVisibility="Auto" ScrollChanged="OnRowsScrollChanged">
                 <ItemsControl x:Name="RowsItemsControl" Margin="8" />
             </ScrollViewer>
+
+            <!-- Hidden while at the bottom; fades in (via code-behind, since it also needs to fade
+                 back out on click/re-arrival at bottom) when a row arrives off-screen below the
+                 current scroll position, so an entry arriving while scrolled up isn't silently
+                 missed the way a per-row glow would be (that glow plays off-screen and is never
+                 seen). -->
+            <Border x:Name="NewArrivalsBanner" Background="#2A2A2A" BorderBrush="#3A96DD" BorderThickness="1"
+                    CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16"
+                    Padding="12,6" Opacity="0" Visibility="Collapsed" Cursor="Hand"
+                    MouseLeftButtonUp="OnNewArrivalsBannerClicked">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="2" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               Foreground="#3A96DD" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock x:Name="NewArrivalsText" Text="New messages" Foreground="White" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
         </Grid>
 
         <TextBlock x:Name="AccessProblemText" Grid.Row="2" Foreground="#D9A93A" Margin="8,4"

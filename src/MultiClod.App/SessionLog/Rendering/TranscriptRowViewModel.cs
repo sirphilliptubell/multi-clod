@@ -13,7 +13,6 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
 {
     private bool isExpanded;
     private bool isAdditionalPropertiesExpanded;
-    private bool isNewArrival;
 
     protected TranscriptRowViewModel(TranscriptRowCategory category, DateTimeOffset? timestamp)
     {
@@ -48,16 +47,6 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
     {
         get => this.isAdditionalPropertiesExpanded;
         set => this.SetField(ref this.isAdditionalPropertiesExpanded, value);
-    }
-
-    // Set by TranscriptViewerControl when this row is appended (or, for a tool call, resolves)
-    // while the user is scrolled away from the bottom. TranscriptCategoryStyles.xaml's row style
-    // plays a fade in/out glow when this becomes true, then the control clears it back to false
-    // once the animation completes.
-    public bool IsNewArrival
-    {
-        get => this.isNewArrival;
-        set => this.SetField(ref this.isNewArrival, value);
     }
 
     // Called by a subclass after mutating the fields its Summary/AdditionalProperties/Copyable

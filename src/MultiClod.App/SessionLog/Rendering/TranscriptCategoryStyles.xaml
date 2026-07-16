@@ -8,36 +8,12 @@
     <SolidColorBrush x:Key="ToolCallErrorBrush" Color="#C0392B" />
     <FontFamily x:Key="TranscriptIconFontFamily">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
-    <!-- Plays a brief fade in/out glow on a row's border when TranscriptViewerControl sets
-         IsNewArrival - for a row appended (or a tool call resolving) while scrolled away from the
-         bottom. The control itself clears IsNewArrival back to false afterwards, so a later glow
-         can re-trigger this DataTrigger's EnterActions again. -->
     <Style x:Key="TranscriptRowBorderStyle" TargetType="Border">
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Margin" Value="0,2" />
         <Setter Property="Padding" Value="8" />
         <Setter Property="Background" Value="#1E1E1E" />
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowEffect Color="White" BlurRadius="14" ShadowDepth="0" Opacity="0" />
-            </Setter.Value>
-        </Setter>
-        <Style.Triggers>
-            <DataTrigger Binding="{Binding IsNewArrival}" Value="True">
-                <DataTrigger.EnterActions>
-                    <BeginStoryboard>
-                        <Storyboard>
-                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(Border.Effect).(DropShadowEffect.Opacity)">
-                                <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0" />
-                                <LinearDoubleKeyFrame KeyTime="0:0:0.15" Value="0.85" />
-                                <LinearDoubleKeyFrame KeyTime="0:0:0.55" Value="0" />
-                            </DoubleAnimationUsingKeyFrames>
-                        </Storyboard>
-                    </BeginStoryboard>
-                </DataTrigger.EnterActions>
-            </DataTrigger>
-        </Style.Triggers>
     </Style>
 
     <!-- Content is set inline per DataTemplate (a Segoe Fluent Icons "Copy" glyph), not here - a
@@ -64,9 +40,23 @@
         <Setter Property="Foreground" Value="{Binding Category, Converter={StaticResource CategoryToBrushConverter}}" />
     </Style>
 
-    <Style x:Key="TranscriptAdditionalPropertiesTextStyle" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="Consolas" />
+    <!-- TextBlock has no built-in text selection, so expanded body/JSON text is rendered in a
+         read-only TextBox styled to look like a TextBlock instead - lets the user select and
+         Ctrl+C entry text, which a plain TextBlock can't do. -->
+    <Style x:Key="TranscriptSelectableTextStyle" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="IsReadOnlyCaretVisible" Value="True" />
         <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Cursor" Value="IBeam" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="SelectionBrush" Value="#3A96DD" />
+    </Style>
+
+    <Style x:Key="TranscriptAdditionalPropertiesTextStyle" TargetType="TextBox" BasedOn="{StaticResource TranscriptSelectableTextStyle}">
+        <Setter Property="FontFamily" Value="Consolas" />
         <Setter Property="Foreground" Value="#AAAAAA" />
         <Setter Property="Background" Value="#141414" />
         <Setter Property="Padding" Value="6" />
@@ -85,9 +75,9 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
-                        <TextBlock Text="{Binding ExpandedBodyText}" TextWrapping="Wrap" Foreground="#DDDDDD" />
+                        <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" Foreground="#DDDDDD" />
                         <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
-                            <TextBlock Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson}" />
+                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -111,9 +101,9 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
-                        <TextBlock Text="{Binding ExpandedBodyText}" TextWrapping="Wrap" FontStyle="Italic" Foreground="#B9AEDD" />
+                        <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" FontStyle="Italic" Foreground="#B9AEDD" />
                         <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
-                            <TextBlock Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson}" />
+                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -138,9 +128,9 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
-                        <TextBlock Text="{Binding ExpandedBodyText}" TextWrapping="Wrap" FontFamily="Consolas" Foreground="#DDDDDD" />
+                        <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" FontFamily="Consolas" Foreground="#DDDDDD" />
                         <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Margin="0,8,0,0" Foreground="Gray">
-                            <TextBlock Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson}" />
+                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -171,7 +161,7 @@
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
                         <Expander Header="Additional Properties" IsExpanded="{Binding IsAdditionalPropertiesExpanded, Mode=TwoWay}" Foreground="Gray">
-                            <TextBlock Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson}" />
+                            <TextBox Style="{StaticResource TranscriptAdditionalPropertiesTextStyle}" Text="{Binding AdditionalPropertiesJson, Mode=OneWay}" />
                         </Expander>
                     </StackPanel>
                 </Expander>
@@ -195,7 +185,7 @@
                         </StackPanel>
                     </Expander.Header>
                     <StackPanel Margin="24,6,4,4">
-                        <TextBlock Text="{Binding ExpandedBodyText}" TextWrapping="Wrap" FontFamily="Consolas" Foreground="#DDDDDD" />
+                        <TextBox Style="{StaticResource TranscriptSelectableTextStyle}" Text="{Binding ExpandedBodyText, Mode=OneWay}" FontFamily="Consolas" Foreground="#DDDDDD" />
                     </StackPanel>
                 </Expander>
                 <Button Style="{StaticResource TranscriptCopyButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,4,0">
