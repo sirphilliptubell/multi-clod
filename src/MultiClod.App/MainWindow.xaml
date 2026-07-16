@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MultiClod.App"
         xmlns:skills="clr-namespace:MultiClod.App.Skills"
+        xmlns:settings="clr-namespace:MultiClod.App.Settings"
         xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="Multi-Clod" Height="600" Width="1000"
@@ -19,7 +20,7 @@
     -->
     <Window.Resources>
         <HierarchicalDataTemplate DataType="{x:Type local:ProjectNodeViewModel}" ItemsSource="{Binding Children}">
-            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White" Margin="2" />
+            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="2" />
         </HierarchicalDataTemplate>
         <HierarchicalDataTemplate DataType="{x:Type local:SessionNodeViewModel}" ItemsSource="{Binding Children}">
             <StackPanel Orientation="Horizontal" Margin="2" ToolTip="{Binding ToolTipText}">
@@ -58,12 +59,12 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                 </Grid>
-                <TextBlock x:Name="SessionNameText" Text="{Binding Name}" Foreground="White" VerticalAlignment="Center" />
+                <TextBlock x:Name="SessionNameText" Text="{Binding Name}" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
             </StackPanel>
             <HierarchicalDataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsInvalid}" Value="True">
                     <Setter TargetName="SessionNameText" Property="TextDecorations" Value="Strikethrough" />
-                    <Setter TargetName="SessionNameText" Property="Foreground" Value="Gray" />
+                    <Setter TargetName="SessionNameText" Property="Foreground" Value="{DynamicResource Theme.Brush.SecondaryForeground}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsHollow}" Value="True">
                     <Setter TargetName="StatusDot" Property="Fill" Value="Transparent" />
@@ -223,12 +224,85 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!--
+            One tab per open session in the main panel's tab strip (MainWindow.TabStrip) - see
+            MainWindow.OpenTab/CloseTab. Mirrors the tree's status-dot glyphs (IsHollow/NeedsInput/
+            Done) so a background tab still signals it needs attention without switching to it, but
+            skips the tree's animated Starting/Working spinners - not worth the extra visual noise
+            at tab-strip size.
+        -->
+        <DataTemplate x:Key="SessionTabItemTemplate">
+            <StackPanel Orientation="Horizontal" Margin="6,3" ToolTip="{Binding ToolTipText}">
+                <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                    <Ellipse x:Name="TabStatusDot" Width="8" Height="8" Fill="{Binding StatusBrush}"
+                             Stroke="{Binding StatusBrush}" StrokeThickness="1.5" />
+                    <Grid x:Name="TabNeedsInputGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Orange" />
+                        <TextBlock Text="?" FontSize="8" FontWeight="Bold" Foreground="Black"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
+                    <Grid x:Name="TabDoneGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Teal" />
+                        <TextBlock Text="&#10003;" FontSize="7" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
+                </Grid>
+                <TextBlock Text="{Binding DisplayTitle}" Foreground="White" VerticalAlignment="Center"
+                           MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                <Button Content="&#10005;" Width="16" Height="16" Margin="8,0,0,0" Padding="0"
+                        Background="Transparent" BorderThickness="0" Foreground="Gray" Cursor="Hand"
+                        VerticalAlignment="Center" Click="OnCloseTabClick" ToolTip="Close tab" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsHollow}" Value="True">
+                    <Setter TargetName="TabStatusDot" Property="Fill" Value="Transparent" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.NeedsInput}">
+                    <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="TabNeedsInputGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Done}">
+                    <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="TabDoneGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Selected tab gets the same blue accent (bottom edge) as the tree's focused-selection
+             highlight, for visual consistency; unselected tabs are flat with a thin divider. -->
+        <Style x:Key="SessionTabItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,1,2" />
+            <Setter Property="BorderBrush" Value="#2D2D30" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1E1E1E" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3A96DD" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252526" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <!-- BorderThickness starts at 0 (invisible) - MainWindow's ctor sets it to a visible red
          border under #if DEBUG, since XAML itself can't be conditionally compiled. -->
     <Border x:Name="DebugBorder" BorderBrush="Red" BorderThickness="0">
-    <Grid Background="Black">
+    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="48" />
             <ColumnDefinition x:Name="TreeColumn" Width="220" MinWidth="120" />
@@ -242,20 +316,20 @@
             MainWindow.SetRailSection (see RailSection) - MouseLeftButtonDown on each icon
             Grid calls into it.
         -->
-        <Border Grid.Column="0" Background="#181818" BorderBrush="Black" BorderThickness="0,0,1,0">
+        <Border Grid.Column="0" Background="{DynamicResource Theme.Brush.RailBackground}" BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,0,1,0">
             <StackPanel>
                 <Grid x:Name="SessionsRailIcon" Width="48" Height="48" Margin="0,8,0,0"
                       MouseLeftButtonDown="OnSessionsRailIconClick">
                     <!-- Accent bar marks this item as the one owning the currently visible Panel. -->
-                    <Border x:Name="SessionsAccentBar" Width="3" HorizontalAlignment="Left" Background="#3A96DD" />
-                    <Border Width="32" Height="32" Background="#2D2D30" CornerRadius="4">
+                    <Border x:Name="SessionsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" />
+                    <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
                         <!-- Single sunburst petal-flower, echoing the coral bursts in Assets/app.png (the app's own icon) at one-third scale. -->
                         <Canvas Width="24" Height="24">
                             <Canvas.Resources>
                                 <Style TargetType="Ellipse">
                                     <Setter Property="Width" Value="3" />
                                     <Setter Property="Height" Value="11" />
-                                    <Setter Property="Fill" Value="#E2785A" />
+                                    <Setter Property="Fill" Value="{DynamicResource Theme.Brush.AccentCoral}" />
                                     <Setter Property="Canvas.Left" Value="10.5" />
                                     <Setter Property="Canvas.Top" Value="1" />
                                 </Style>
@@ -272,22 +346,40 @@
 
                 <Grid x:Name="SkillsRailIcon" Width="48" Height="48"
                       MouseLeftButtonDown="OnSkillsRailIconClick">
-                    <Border x:Name="SkillsAccentBar" Width="3" HorizontalAlignment="Left" Background="#3A96DD" Visibility="Collapsed" />
-                    <Border Width="32" Height="32" Background="#2D2D30" CornerRadius="4">
-                        <!-- Simple document/sheet glyph (rounded card + three ruled lines) for the Skills panel. -->
+                    <Border x:Name="SkillsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
+                    <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                        <!-- Simple document/sheet glyph (rounded card + three ruled lines) for the Skills panel.
+                             The card and its ruled lines are a fixed pair (not theme-linked) - the lines are
+                             just cutout strokes against the card's own AccentSecondary fill, unrelated to the
+                             surrounding window theme. -->
                         <Canvas Width="24" Height="24">
-                            <Border Width="16" Height="20" Canvas.Left="4" Canvas.Top="2" CornerRadius="2" Background="#3AA0E2" />
+                            <Border Width="16" Height="20" Canvas.Left="4" Canvas.Top="2" CornerRadius="2" Background="{DynamicResource Theme.Brush.AccentSecondary}" />
                             <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="7" Fill="#1E1E1E" />
                             <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="11" Fill="#1E1E1E" />
                             <Rectangle Width="6" Height="1.5" Canvas.Left="7" Canvas.Top="15" Fill="#1E1E1E" />
                         </Canvas>
                     </Border>
                 </Grid>
+
+                <Grid x:Name="SettingsRailIcon" Width="48" Height="48"
+                      MouseLeftButtonDown="OnSettingsRailIconClick">
+                    <Border x:Name="SettingsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
+                    <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                        <!-- Gear glyph from Assets/settings.png, used as an OpacityMask over a plain
+                             fill so its alpha shape renders in the rail's icon color instead
+                             of the source PNG's own black. -->
+                        <Rectangle Width="20" Height="20" Fill="{DynamicResource Theme.Brush.PrimaryForeground}">
+                            <Rectangle.OpacityMask>
+                                <ImageBrush ImageSource="/Assets/settings.png" />
+                            </Rectangle.OpacityMask>
+                        </Rectangle>
+                    </Border>
+                </Grid>
             </StackPanel>
         </Border>
 
         <Grid Grid.Column="1">
-            <TreeView x:Name="Tree" Background="#1E1E1E" BorderThickness="0"
+            <TreeView x:Name="Tree" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       AllowDrop="True"
                       SelectedItemChanged="OnTreeSelectedItemChanged"
@@ -297,8 +389,8 @@
                       DragOver="OnTreeDragOver"
                       Drop="OnTreeDrop">
                 <TreeView.Resources>
-                    <!-- Focused-selected row: echoes the terminal pane's own text-selection accent (SessionTheme.SelectionBackground = #3A96DD) for visual consistency. -->
-                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
+                    <!-- Focused-selected row: echoes the terminal pane's own text-selection accent (ThemeManager's Accent color) for visual consistency. -->
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
                     <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
 
                     <!--
@@ -310,10 +402,10 @@
                         the tree is frequently unfocused since the hosted terminal control constantly
                         steals keyboard focus.
                     -->
-                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
-                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
-                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="#284861" />
-                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="White" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                    <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
                 </TreeView.Resources>
                 <TreeView.ContextMenu>
                     <ContextMenu x:Name="TreeContextMenu" />
@@ -323,7 +415,7 @@
             <!-- Skills panel: a flat list of personal skills (~/.claude/skills/*/SKILL.md), populated
                  in code-behind by MainWindow.EnsureSkillsLoaded. Mutually exclusive with Tree via
                  Visibility, same convention as the canvas's own children below. -->
-            <ListBox x:Name="SkillsList" Background="#1E1E1E" BorderThickness="0"
+            <ListBox x:Name="SkillsList" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
                      Visibility="Collapsed"
                      SelectionChanged="OnSkillsListSelectionChanged"
                      MouseRightButtonDown="OnSkillsListMouseRightButtonDown"
@@ -334,11 +426,11 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
-                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White" />
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
                             <!-- Description is left plain (no visibility converter for the null/empty
                                  case) - an empty TextBlock with no MinHeight collapses to zero height
                                  visually, so there's no blank gap worth the extra converter class. -->
-                            <TextBlock Text="{Binding Description}" Foreground="Gray" FontSize="11" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" />
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -346,32 +438,63 @@
         </Grid>
 
         <GridSplitter Grid.Column="2" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                      Background="#1E1E1E" ResizeBehavior="PreviousAndNext" />
+                      Background="{DynamicResource Theme.Brush.WindowBackground}" ResizeBehavior="PreviousAndNext" />
 
         <Grid Grid.Column="3">
-            <!--
-                Shown whenever the current selection isn't a running session (nothing selected, a
-                Project selected, or a dormant session before it's launched/validated) and no skill
-                is selected either. Always present, never removed - only Visibility toggles, same
-                rule as the session panes and SkillDetail below.
-            -->
-            <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="Gray"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-
-            <!-- Shown instead of launching when the selected dormant session fails validation. -->
-            <TextBlock x:Name="ErrorText" Foreground="OrangeRed" TextWrapping="Wrap" MaxWidth="500"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
             <!--
-                Every running session's Pane.View is added here exactly once, permanently, for
-                that host's entire lifetime. Selection only ever toggles Visibility - never swap
-                Content/Children membership for a live view. See the comment in
-                MainWindow.LaunchSession for why.
+                Tab strip: one tab per session opened from the Tree (see MainWindow.OpenTab),
+                independent of which tree node happens to be selected - selecting a Project node no
+                longer disturbs whichever tab is active (see MainWindow.OnTreeSelectedItemChanged).
+                Collapsed entirely while the Skills rail section is active - see SetRailSection.
             -->
-            <Grid x:Name="SessionViewHost" />
+            <Border x:Name="TabStripHost" Grid.Row="0" Background="#181818" BorderBrush="#2D2D30" BorderThickness="0,0,0,1">
+                <ListBox x:Name="TabStrip" Background="Transparent" BorderThickness="0"
+                         ItemTemplate="{StaticResource SessionTabItemTemplate}"
+                         ItemContainerStyle="{StaticResource SessionTabItemContainerStyle}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         SelectionChanged="OnTabStripSelectionChanged">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+            </Border>
 
-            <!-- Rendered/edited SKILL.md for the currently selected skill - see Skills\SkillDetailView. -->
-            <skills:SkillDetailView x:Name="SkillDetail" Visibility="Collapsed" />
+            <Grid Grid.Row="1">
+                <!--
+                    Shown whenever there's no active tab (nothing ever opened, or the active tab
+                    was just closed) and no skill is selected either. Always present, never
+                    removed - only Visibility toggles, same rule as the session panes and
+                    SkillDetail below.
+                -->
+                <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <!-- Shown instead of launching when the active tab's session fails validation. -->
+                <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Theme.Brush.Error}" TextWrapping="Wrap" MaxWidth="500"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+
+                <!--
+                    Every running session's Pane.View is added here exactly once, permanently, for
+                    that host's entire lifetime. Tab switching only ever toggles Visibility - never
+                    swap Content/Children membership for a live view. See the comment in
+                    MainWindow.LaunchSession for why.
+                -->
+                <Grid x:Name="SessionViewHost" />
+
+                <!-- Rendered/edited SKILL.md for the currently selected skill - see Skills\SkillDetailView. -->
+                <skills:SkillDetailView x:Name="SkillDetail" Visibility="Collapsed" />
+
+                <!-- App preferences - see Settings\SettingsView. -->
+                <settings:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
+            </Grid>
         </Grid>
     </Grid>
     </Border>

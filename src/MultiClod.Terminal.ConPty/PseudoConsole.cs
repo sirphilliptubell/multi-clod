@@ -36,13 +36,20 @@ internal sealed class PseudoConsole : IDisposable
         return new PseudoConsole(hPC);
     }
 
+    // Best-effort, not throw-on-failure - every caller (see TerminalContainer's various resize
+    // paths, all the way up through ConPtyConnection.Resize) fires this from layout/window-message
+    // callbacks with no way to act on a failure. A resize racing the pseudoconsole/process already
+    // tearing down (observed: ERROR_NO_DATA / "the pipe is being closed") is an entirely expected,
+    // harmless case - not a bug worth an unhandled exception crashing the whole app over, which is
+    // what this used to do unconditionally.
     internal void Resize(int width, int height)
     {
-        var resizeResult = ResizePseudoConsole(this.Handle, new COORD { X = (short)width, Y = (short)height });
-        if (resizeResult != 0)
+        if (this.disposed)
         {
-            throw new InvalidOperationException("Could not resize pseudo console. Error Code " + resizeResult);
+            return;
         }
+
+        ResizePseudoConsole(this.Handle, new COORD { X = (short)width, Y = (short)height });
     }
 
     public void Dispose()

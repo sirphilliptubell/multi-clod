@@ -30,10 +30,18 @@ namespace Microsoft.Terminal.Wpf
 
             this.termContainer.TerminalScrolled += this.TermControl_TerminalScrolled;
             this.termContainer.UserScrolled += this.TermControl_UserScrolled;
+            this.termContainer.WindowCreated += (sender, e) => this.WindowCreated?.Invoke(this, e);
             this.scrollbar.MouseWheel += this.Scrollbar_MouseWheel;
 
             this.GotFocus += this.TerminalControl_GotFocus;
         }
+
+        /// <summary>
+        /// Fires once the native terminal hwnd has actually been created - see
+        /// TerminalContainer.WindowCreated. A SetTheme call made before this (e.g. while the
+        /// control's ancestor is still Visibility.Collapsed) has nothing to act on yet.
+        /// </summary>
+        public event EventHandler WindowCreated;
 
         /// <summary>
         /// Gets the current character rows available to the terminal.
@@ -61,6 +69,16 @@ namespace Microsoft.Terminal.Wpf
         public ITerminalConnection Connection
         {
             set => this.termContainer.Connection = value;
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether Shift+Enter sends a newline to the connection
+        /// instead of Enter's normal behavior. See TerminalContainer.NewlineOnShiftEnter.
+        /// </summary>
+        public bool NewlineOnShiftEnter
+        {
+            get => this.termContainer.NewlineOnShiftEnter;
+            set => this.termContainer.NewlineOnShiftEnter = value;
         }
 
         /// <summary>

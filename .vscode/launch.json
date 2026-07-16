@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "MultiClod.App (Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build MultiClod.App",
+            "program": "${workspaceFolder}/src/MultiClod.App/bin/x64/Debug/net8.0-windows/MultiClod.App.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/MultiClod.App",
+            "stopAtEntry": false,
+            // "internalConsole" makes VS Code capture the debuggee's std handles/environment to
+            // feed its own Debug Console - that gets inherited by every child process MultiClod
+            // spawns (cmd.exe -> claude.cmd -> node.exe for each session) and is enough to trip
+            // Claude Code's newer non-interactive/stdin-readability detection on Windows, causing
+            // every session launched from an F5 debug run to fault immediately. MultiClod is a
+            // WinExe with no console output of its own to capture anyway, so there's nothing lost
+            // by not routing it through the Debug Console - "externalTerminal" launches it exactly
+            // like a normal double-click/Start Menu launch instead, which isn't affected.
+            "console": "externalTerminal"
+        }
+    ]
+}

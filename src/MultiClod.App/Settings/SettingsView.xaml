@@ -1,0 +1,164 @@
+<UserControl x:Class="MultiClod.App.Settings.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Shared with Skills\SkillDetailView's Edit toggle - not duplicated here. -->
+                <ResourceDictionary Source="/MultiClod.App;component/Skills/ToggleSwitchStyle.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style TargetType="TextBox">
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="CaretBrush" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
+            <Style TargetType="Button">
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
+                <Setter Property="Padding" Value="10,6" />
+            </Style>
+
+            <!-- Full retemplate, not just Background/Foreground setters - same reason as
+                 AddSessionDialog's ComboBox: the default Aero2 chrome draws its closed-box text
+                 and item-hover highlight via internal SystemColors-bound brushes a plain Setter
+                 can't reach, which would otherwise leave this dark-on-dark and unreadable. -->
+            <Style TargetType="ComboBoxItem">
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border x:Name="Bd" Background="{DynamicResource Theme.Brush.ControlBackground}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Brush.Accent}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="ComboBox">
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                                              Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="24" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Path Grid.Column="1" Data="M0,0 L4,4 L8,0 Z" Fill="{DynamicResource Theme.Brush.PrimaryForeground}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
+                                                  Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
+                                       PopupAnimation="Slide" IsOpen="{TemplateBinding IsDropDownOpen}">
+                                    <Border Background="{DynamicResource Theme.Brush.ControlBackground}" BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="1"
+                                            MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="200">
+                                        <ScrollViewer>
+                                            <ItemsPresenter />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- No retemplate, same as AddSessionDialog's plain CheckBox style - the default
+                 chrome's small indicator circle reads fine against either theme's background. -->
+            <Style TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="Margin" Value="0,0,0,6" />
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}">
+        <StackPanel Margin="24" MaxWidth="480" HorizontalAlignment="Left">
+            <TextBlock Text="Settings" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" FontSize="18" FontWeight="Bold" Margin="0,0,0,16" />
+
+            <TextBlock Text="Appearance" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8" />
+
+            <TextBlock Text="Theme" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,6" />
+            <RadioButton x:Name="DarkThemeRadio" GroupName="Theme" Content="Dark" Checked="OnThemeRadioChecked" />
+            <RadioButton x:Name="DarkLowContrastThemeRadio" GroupName="Theme" Content="Dark (Low Contrast)" Checked="OnThemeRadioChecked" />
+            <RadioButton x:Name="LightThemeRadio" GroupName="Theme" Content="Light" Checked="OnThemeRadioChecked" Margin="0,0,0,16" />
+
+            <TextBlock Text="General" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,0,0,8" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ToggleButton x:Name="ShiftEnterToggle" Style="{StaticResource ToggleSwitchStyle}"
+                              Click="OnShiftEnterToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="Use Shift+Enter for newlines" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="When on, Shift+Enter inserts a newline in a session instead of Ctrl+Enter."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
+
+            <TextBlock Text="Sessions" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,20,0,8" />
+
+            <TextBlock Text="Default root folder" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="DefaultRootFolderBox" Grid.Column="0" IsReadOnly="True" />
+                <Button Grid.Column="1" Content="Browse..." Click="OnBrowseDefaultRootFolderClick" Margin="8,0,0,0" />
+            </Grid>
+            <TextBlock Text="New sessions default to this folder (see Add Session's form)."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,16" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ToggleButton x:Name="WorktreeToggle" Style="{StaticResource ToggleSwitchStyle}"
+                              Click="OnWorktreeToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="Start new sessions with a git worktree" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="Pre-checks &quot;Create a git worktree&quot; in the Add Session form - still editable per session."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
+
+            <TextBlock Text="Default permission mode" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,16,0,4" />
+            <ComboBox x:Name="PermissionModeCombo" HorizontalAlignment="Left" MinWidth="260"
+                      SelectionChanged="OnPermissionModeSelectionChanged">
+                <ComboBoxItem Tag="Manual" Content="Manual (ask before every action)" />
+                <ComboBoxItem Tag="Auto" Content="Auto (classifier decides what needs approval)" />
+                <ComboBoxItem Tag="AcceptEdits" Content="Accept edits automatically" />
+                <ComboBoxItem Tag="Plan" Content="Plan mode (research only, no changes)" />
+                <ComboBoxItem Tag="BypassPermissions" Content="Bypass permissions (no prompts at all)" />
+            </ComboBox>
+            <TextBlock Text="Which mode a brand-new session's claude process starts in (same modes Shift+Tab cycles through inside a session). Only applies to sessions launched after this is changed."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+    </Grid>
+</UserControl>

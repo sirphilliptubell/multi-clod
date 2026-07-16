@@ -1,11 +1,38 @@
 <Window x:Class="MultiClod.App.RenameDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
         Title="Rename Session" Height="140" Width="320"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        ShowInTaskbar="False">
-    <Grid Margin="12">
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.Brush.WindowBackground}">
+    <!-- Same theme resource block as ImportSessionWindow.xaml/AddSessionDialog.xaml - not
+         shared via a merged dictionary since each window's sizing/padding differs slightly and
+         there are only three call sites. -->
+    <Window.Resources>
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
+            <Setter Property="Padding" Value="10,6" />
+        </Style>
+    </Window.Resources>
+    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}" Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -14,7 +41,7 @@
 
         <TextBox x:Name="NameBox" Grid.Row="0" VerticalAlignment="Center" />
 
-        <TextBlock x:Name="ErrorText" Grid.Row="1" Foreground="Red" TextWrapping="Wrap"
+        <TextBlock x:Name="ErrorText" Grid.Row="1" Foreground="{DynamicResource Theme.Brush.Error}" TextWrapping="Wrap"
                    Margin="0,4,0,0" Visibility="Collapsed" />
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

@@ -10,6 +10,73 @@
                      Markdig.Wpf.Markdown.ToFlowDocument - see Skills\SkillDetailView.xaml.cs. -->
                 <ResourceDictionary Source="pack://application:,,,/Markdig.Wpf;component/Themes/generic.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!--
+                App-wide dark styling for ContextMenu/MenuItem/Separator - every ContextMenu in the
+                app (Tree's and SkillsList's, in MainWindow.xaml) is a plain unnamed-style
+                <ContextMenu/>, so an implicit (no x:Key) style here reaches all of them without
+                each needing its own copy. Full ControlTemplate retemplates rather than plain
+                Background/Foreground setters - same reason as AddSessionDialog's ComboBox: the
+                default Aero2 chrome draws its highlighted/pressed states via internal
+                SystemColors-bound brushes a plain Setter can't reach, which would otherwise leave
+                the popup's own background dark but each row's hover highlight and header text
+                still using the unstyled (light) defaults.
+            -->
+            <Style TargetType="ContextMenu">
+                <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="1" Padding="2">
+                                <StackPanel IsItemsHost="True" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="MenuItem">
+                <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                <Setter Property="Padding" Value="12,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="Bg" Background="Transparent" Padding="{TemplateBinding Padding}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Grid.Column="0" ContentSource="Header" VerticalAlignment="Center"
+                                                       TextElement.Foreground="{TemplateBinding Foreground}" />
+                                    <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                                               Margin="24,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bg" Property="Background" Value="{DynamicResource Theme.Brush.Accent}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.SecondaryForeground}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="Separator">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Separator">
+                            <Border Height="1" Background="{DynamicResource Theme.Brush.Border}" Margin="4,4" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

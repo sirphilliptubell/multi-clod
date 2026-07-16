@@ -8,4 +8,5 @@ internal enum RailSection
 {
     Sessions,
     Skills,
+    Settings,
 }

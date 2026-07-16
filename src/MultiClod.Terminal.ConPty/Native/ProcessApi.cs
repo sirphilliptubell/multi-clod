@@ -10,6 +10,10 @@ internal static class ProcessApi
 {
     internal const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
 
+    // Required whenever lpEnvironment points at a UTF-16 block (as opposed to ANSI) - see
+    // ProcessFactory.BuildEnvironmentBlock.
+    internal const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     internal struct STARTUPINFOEX
     {
