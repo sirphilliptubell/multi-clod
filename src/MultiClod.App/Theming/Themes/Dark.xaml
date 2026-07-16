@@ -1,0 +1,46 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Default dark theme - the app's original (pre-theming) palette, unchanged so existing
+        installs see no visual difference. Every key here must also exist, with the same name, in
+        DarkLowContrast.xaml and Light.xaml (see ThemeManager) - a Color entry feeds both its own
+        direct consumers (e.g. SystemColors brush-key overrides that need a raw Color) and the
+        matching Brush entry below it.
+    -->
+
+    <Color x:Key="Theme.Color.WindowBackground">#1E1E1E</Color>
+    <Color x:Key="Theme.Color.RailBackground">#181818</Color>
+    <Color x:Key="Theme.Color.RailTileBackground">#2D2D30</Color>
+    <Color x:Key="Theme.Color.ControlBackground">#2A2A2A</Color>
+    <Color x:Key="Theme.Color.SurfaceAlt">#242424</Color>
+    <Color x:Key="Theme.Color.Border">#3F3F3F</Color>
+    <Color x:Key="Theme.Color.PrimaryForeground">#FFFFFF</Color>
+    <Color x:Key="Theme.Color.SecondaryForeground">#808080</Color>
+    <Color x:Key="Theme.Color.Accent">#3A96DD</Color>
+    <Color x:Key="Theme.Color.AccentSecondary">#3AA0E2</Color>
+    <Color x:Key="Theme.Color.AccentCoral">#E2785A</Color>
+    <Color x:Key="Theme.Color.SelectionUnfocusedBackground">#284861</Color>
+    <Color x:Key="Theme.Color.SelectionUnfocusedForeground">#FFFFFF</Color>
+    <Color x:Key="Theme.Color.ToggleTrackOff">#555555</Color>
+    <Color x:Key="Theme.Color.Error">#FF4500</Color>
+    <Color x:Key="Theme.Color.MarkdownForeground">#DCDCDC</Color>
+
+    <SolidColorBrush x:Key="Theme.Brush.WindowBackground" Color="{StaticResource Theme.Color.WindowBackground}" />
+    <SolidColorBrush x:Key="Theme.Brush.RailBackground" Color="{StaticResource Theme.Color.RailBackground}" />
+    <SolidColorBrush x:Key="Theme.Brush.RailTileBackground" Color="{StaticResource Theme.Color.RailTileBackground}" />
+    <SolidColorBrush x:Key="Theme.Brush.ControlBackground" Color="{StaticResource Theme.Color.ControlBackground}" />
+    <SolidColorBrush x:Key="Theme.Brush.SurfaceAlt" Color="{StaticResource Theme.Color.SurfaceAlt}" />
+    <SolidColorBrush x:Key="Theme.Brush.Border" Color="{StaticResource Theme.Color.Border}" />
+    <SolidColorBrush x:Key="Theme.Brush.PrimaryForeground" Color="{StaticResource Theme.Color.PrimaryForeground}" />
+    <SolidColorBrush x:Key="Theme.Brush.SecondaryForeground" Color="{StaticResource Theme.Color.SecondaryForeground}" />
+    <SolidColorBrush x:Key="Theme.Brush.Accent" Color="{StaticResource Theme.Color.Accent}" />
+    <SolidColorBrush x:Key="Theme.Brush.AccentSecondary" Color="{StaticResource Theme.Color.AccentSecondary}" />
+    <SolidColorBrush x:Key="Theme.Brush.AccentCoral" Color="{StaticResource Theme.Color.AccentCoral}" />
+    <SolidColorBrush x:Key="Theme.Brush.SelectionUnfocusedBackground" Color="{StaticResource Theme.Color.SelectionUnfocusedBackground}" />
+    <SolidColorBrush x:Key="Theme.Brush.SelectionUnfocusedForeground" Color="{StaticResource Theme.Color.SelectionUnfocusedForeground}" />
+    <SolidColorBrush x:Key="Theme.Brush.ToggleTrackOff" Color="{StaticResource Theme.Color.ToggleTrackOff}" />
+    <SolidColorBrush x:Key="Theme.Brush.Error" Color="{StaticResource Theme.Color.Error}" />
+    <SolidColorBrush x:Key="Theme.Brush.MarkdownForeground" Color="{StaticResource Theme.Color.MarkdownForeground}" />
+
+</ResourceDictionary>

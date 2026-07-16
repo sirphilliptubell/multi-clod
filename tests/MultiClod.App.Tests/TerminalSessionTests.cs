@@ -164,6 +164,10 @@ public sealed class TerminalSessionTests
 
         public SessionState State => SessionState.NotStarted;
 
+        public int? LastExitCode => null;
+
+        public string LastOutputTail => string.Empty;
+
 #pragma warning disable CS0067 // never raised - TerminalSession only needs to subscribe successfully
         public event EventHandler<SessionState>? StateChanged;
 

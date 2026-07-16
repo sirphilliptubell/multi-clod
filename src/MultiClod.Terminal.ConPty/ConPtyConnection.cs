@@ -35,6 +35,16 @@ public sealed class ConPtyConnection : IPtyConnection
 
     private const int MaxPendingTitleSequenceLength = 4096;
 
+    // Rolling tail of raw output, handed to Exited via ProcessExitedEventArgs.OutputTail - lets a
+    // caller see whatever the child printed right before dying (e.g. "'claude' is not recognized
+    // as an internal or external command") without needing to catch it live in the terminal pane
+    // before it scrolls off or the session/window closes. Guarded by outputTailLock since
+    // PumpOutput (a background thread) appends to it while OnProcessExited (a ThreadPool callback
+    // from Process.Exited) reads it - StringBuilder itself isn't thread-safe.
+    private readonly StringBuilder outputTail = new();
+    private readonly object outputTailLock = new();
+    private const int OutputTailMaxLength = 4000;
+
     public ConPtyConnection(TerminalLaunchOptions options)
     {
         this.options = options;
@@ -92,6 +102,15 @@ public sealed class ConPtyConnection : IPtyConnection
 
     public void Resize(uint rows, uint columns)
     {
+        // Cheap best-effort guard, same rationale as PseudoConsole.Resize's own disposed check -
+        // a resize racing Dispose() (which can run on a background thread - see
+        // MainWindow.OnClosing's concurrent Task.Run(Dispose) - while this is called from the UI
+        // thread) is expected, not an error.
+        if (this.disposed)
+        {
+            return;
+        }
+
         this.pseudoConsole?.Resize((int)columns, (int)rows);
     }
 
@@ -173,6 +192,7 @@ public sealed class ConPtyConnection : IPtyConnection
                 var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                 this.OutputReceived?.Invoke(this, text);
                 this.ScanForTitleSequences(text);
+                this.AppendToOutputTail(text);
             }
         }
         catch (IOException)
@@ -249,6 +269,20 @@ public sealed class ConPtyConnection : IPtyConnection
         this.pendingTitleSequence = value.Length <= MaxPendingTitleSequenceLength ? value : null;
     }
 
+    private void AppendToOutputTail(string text)
+    {
+        lock (this.outputTailLock)
+        {
+            this.outputTail.Append(text);
+
+            var excess = this.outputTail.Length - OutputTailMaxLength;
+            if (excess > 0)
+            {
+                this.outputTail.Remove(0, excess);
+            }
+        }
+    }
+
     private void OnProcessExited(object? sender, EventArgs e)
     {
         var exitCode = 0;
@@ -261,6 +295,12 @@ public sealed class ConPtyConnection : IPtyConnection
             // Process handle already torn down by Dispose().
         }
 
-        this.Exited?.Invoke(this, new ProcessExitedEventArgs(exitCode));
+        string outputTail;
+        lock (this.outputTailLock)
+        {
+            outputTail = this.outputTail.ToString();
+        }
+
+        this.Exited?.Invoke(this, new ProcessExitedEventArgs(exitCode, outputTail));
     }
 }

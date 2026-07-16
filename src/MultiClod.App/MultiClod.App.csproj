@@ -39,6 +39,11 @@
     <!-- Loadable as a pack URI (see SplashWindow.xaml) - ApplicationIcon above only feeds the
          exe's own file icon resource, it doesn't make app.ico/app.png usable from an Image control. -->
     <Resource Include="Assets\app.png" />
+
+    <!-- Rail icon glyph for the Settings section (MainWindow.xaml) - used as an OpacityMask so its
+         black gear renders in whatever solid color the rail icon needs, rather than the source
+         PNG's own black. -->
+    <Resource Include="Assets\settings.png" />
   </ItemGroup>
 
   <ItemGroup>

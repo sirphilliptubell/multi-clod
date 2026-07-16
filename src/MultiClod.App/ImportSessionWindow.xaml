@@ -5,39 +5,40 @@
         Title="Import Session" Height="960" Width="1640"
         MaxHeight="{x:Static sys:SystemParameters.PrimaryScreenHeight}"
         MaxWidth="{x:Static sys:SystemParameters.PrimaryScreenWidth}"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Theme.Brush.WindowBackground}">
     <!-- Same SystemColors overrides as MainWindow.xaml's TreeView.Resources, so the DataGrid's
-         selection highlight matches the rest of the app's dark theme instead of the stock
+         selection highlight matches the rest of the app's theme instead of the stock
          light-gray ListBox/DataGrid selection colors. Control.Foreground inherits down the tree,
          so overriding ControlTextBrushKey here also affects TextBox/Button - both get their own
          explicit Background/Foreground/BorderBrush below rather than relying on inherited/default
          values, since a plain TextBox's default Background stays white regardless of this. -->
     <Window.Resources>
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
         <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="#284861" />
-        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="White" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="CaretBrush" Value="White" />
-            <Setter Property="BorderBrush" Value="#3F3F3F" />
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="#3F3F3F" />
+            <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Theme.Brush.Border}" />
             <Setter Property="Padding" Value="10,6" />
         </Style>
     </Window.Resources>
-    <Grid Background="#1E1E1E" Margin="16">
+    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}" Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -54,19 +55,19 @@
             <Button x:Name="SearchButton" Grid.Column="1" Content="Search" Width="90" Margin="10,0,0,0" Click="OnSearchClick" />
         </Grid>
 
-        <TextBlock x:Name="StatusText" Grid.Row="1" Foreground="Gray" Margin="0,0,0,10" />
+        <TextBlock x:Name="StatusText" Grid.Row="1" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" Margin="0,0,0,10" />
 
         <DataGrid x:Name="ResultsGrid" Grid.Row="2"
-                  Background="#1E1E1E" Foreground="White" BorderThickness="1" BorderBrush="#3F3F3F"
-                  RowBackground="#1E1E1E" AlternatingRowBackground="#242424" RowHeight="28"
+                  Background="{DynamicResource Theme.Brush.WindowBackground}" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" BorderThickness="1" BorderBrush="{DynamicResource Theme.Brush.Border}"
+                  RowBackground="{DynamicResource Theme.Brush.WindowBackground}" AlternatingRowBackground="{DynamicResource Theme.Brush.SurfaceAlt}" RowHeight="28"
                   AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
                   SelectionMode="Single" SelectionUnit="FullRow"
                   HeadersVisibility="Column" GridLinesVisibility="None"
                   SelectionChanged="OnResultsSelectionChanged" MouseDoubleClick="OnResultsDoubleClick">
             <DataGrid.ColumnHeaderStyle>
                 <Style TargetType="DataGridColumnHeader">
-                    <Setter Property="Background" Value="#2D2D2D" />
-                    <Setter Property="Foreground" Value="White" />
+                    <Setter Property="Background" Value="{DynamicResource Theme.Brush.ControlBackground}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.Brush.PrimaryForeground}" />
                     <Setter Property="Padding" Value="8,6" />
                 </Style>
             </DataGrid.ColumnHeaderStyle>

@@ -17,9 +17,10 @@ using MultiClod.App.Import;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
 using MultiClod.App.SessionLog;
+using MultiClod.App.Settings;
 using MultiClod.App.Skills;
+using MultiClod.App.Theming;
 using MultiClod.App.Updates;
-using MultiClod.App.Validation;
 using MultiClod.Terminal.Abstractions;
 using MultiClod.Terminal.Wpf;
 
@@ -27,21 +28,24 @@ namespace MultiClod.App;
 
 public partial class MainWindow : Window
 {
-    private static readonly TerminalPaneTheme SessionTheme = new()
-    {
-        Background = Color.FromRgb(12, 12, 12),
-        Foreground = Color.FromRgb(242, 242, 242),
-        CursorColor = Color.FromRgb(242, 242, 242),
-        SelectionBackground = Color.FromRgb(58, 150, 221),
-    };
-
     private readonly SessionStore store;
     private readonly SessionTreeController controller;
     private readonly WindowLayoutStore layoutStore;
+    private readonly AppSettingsStore settingsStore;
+    private AppSettings appSettings;
     private readonly ClaudeSessionHooksInstaller hooksInstaller;
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
     private readonly SessionLogWindowRegistry sessionLogWindows = new();
+
+    // Sessions currently open as tabs in the main panel, in tab-strip order - see OpenTab/CloseTab.
+    // Bound to TabStrip.ItemsSource in the ctor. Decoupled from Tree.SelectedItem: selecting a
+    // Project node in the tree leaves this (and whichever tab is active) untouched.
+    private readonly ObservableCollection<SessionNodeViewModel> openTabs = new();
+
+    // Captured in the ctor for RestoreOpenTabs, called from OnLoaded once SessionViewHost's
+    // terminal control has a real HWND - same deferral rationale as the --from-here handling below.
+    private readonly WindowLayout? savedLayout;
 
     // Title as set by the ctor (includes the "(Debug)" suffix), before any update-status suffix -
     // see OnUpdateStatusChanged. Captured once rather than stripping a suffix back off later.
@@ -88,6 +92,8 @@ public partial class MainWindow : Window
     {
         this.InitializeComponent();
 
+        DarkTitleBar.Apply(this);
+
 #if DEBUG
         // Visibly distinguishes a Debug build's window from a concurrently-running Release
         // instance (see FromHereProtocol's Debug/Release isolation) so the two are never confused.
@@ -111,8 +117,21 @@ public partial class MainWindow : Window
         this.controller.Load();
         this.Tree.ItemsSource = this.controller.RootNodes;
 
+        this.TabStrip.ItemsSource = this.openTabs;
+
         this.layoutStore = new WindowLayoutStore();
-        ApplyWindowLayout(this, this.TreeColumn, this.layoutStore.Load());
+        this.savedLayout = this.layoutStore.Load();
+        ApplyWindowLayout(this, this.TreeColumn, this.savedLayout);
+
+        this.settingsStore = new AppSettingsStore();
+        this.appSettings = this.settingsStore.Load();
+        ThemeManager.Apply(this.appSettings.Theme);
+        this.SettingsView.LoadSettings(this.appSettings);
+        this.SettingsView.UseShiftEnterForNewlineChanged += this.OnUseShiftEnterForNewlineChanged;
+        this.SettingsView.DefaultRootFolderChanged += this.OnDefaultRootFolderChanged;
+        this.SettingsView.UseWorktreeByDefaultChanged += this.OnUseWorktreeByDefaultChanged;
+        this.SettingsView.DefaultPermissionModeChanged += this.OnDefaultPermissionModeChanged;
+        this.SettingsView.ThemeChanged += this.OnThemeChanged;
 
         // Best-effort - see ClaudeSessionHooksInstaller.SettingsFilePath, which LaunchSession
         // checks before appending --settings, so a failed write here just forgoes activity icons.
@@ -142,6 +161,8 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         this.Loaded -= this.OnLoaded;
+
+        this.RestoreOpenTabs(this.savedLayout);
 
         if (Application.Current is App app)
         {
@@ -179,7 +200,8 @@ public partial class MainWindow : Window
         }
 
         var host = new WpfSessionHost();
-        host.Pane.ApplyTheme(SessionTheme);
+        host.Pane.ApplyTheme(ThemeManager.GetTerminalTheme(this.appSettings.Theme));
+        host.Pane.NewlineOnShiftEnter = this.appSettings.UseShiftEnterForNewline;
         host.Pane.Title = node.DisplayTitle;
         host.CloseRequested += (_, _) => this.StopSession(node);
 
@@ -209,6 +231,19 @@ public partial class MainWindow : Window
         {
             commandLine += $" --settings \"{settingsPath}\"";
         }
+
+        // Always passed (rather than only for non-Manual modes) so this setting deterministically
+        // picks the startup mode regardless of whatever defaultMode the user's own global Claude
+        // Code settings.json might otherwise apply.
+        var permissionModeFlag = this.appSettings.DefaultPermissionMode switch
+        {
+            ClaudePermissionMode.Auto => "auto",
+            ClaudePermissionMode.AcceptEdits => "acceptEdits",
+            ClaudePermissionMode.Plan => "plan",
+            ClaudePermissionMode.BypassPermissions => "bypassPermissions",
+            _ => "manual",
+        };
+        commandLine += $" --permission-mode {permissionModeFlag}";
 
         host.Start(new TerminalLaunchOptions { WorkingDirectory = node.WorkingDirectory, CommandLine = commandLine });
 
@@ -261,6 +296,13 @@ public partial class MainWindow : Window
                     }
                 }
             }
+            else if (e.PropertyName == nameof(TerminalSession.State) && session.State == SessionState.Faulted)
+            {
+                // See SessionDiagnosticsLog - captures the exit code and whatever the process
+                // printed right before dying, since by the time a user notices "Faulted" the
+                // terminal pane itself has often already moved on or been closed.
+                SessionDiagnosticsLog.LogFault(node.Name, node.WorkingDirectory, commandLine, host.LastExitCode, host.LastOutputTail);
+            }
         };
 
         node.HasBeenStarted = true;
@@ -282,16 +324,14 @@ public partial class MainWindow : Window
         node.DetachLiveSession();
     }
 
+    // Selecting a Session node opens/activates its tab; selecting a Project node (or nothing, e.g.
+    // after a delete) is deliberately a no-op here - it leaves whichever tab is currently active
+    // untouched, same as clicking a folder in an editor's sidebar doesn't blank the open editor.
     private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (this.suppressSelectionSideEffects)
         {
             return;
-        }
-
-        if (e.OldValue is SessionNodeViewModel { LiveSession: { } oldSession })
-        {
-            oldSession.Host.Pane.View.Visibility = Visibility.Collapsed;
         }
 
         if (e.NewValue is SessionNodeViewModel session)
@@ -300,40 +340,156 @@ public partial class MainWindow : Window
             // done its job. No-ops on a dormant node or one still Working.
             session.ClearLatchedActivity();
 
-            if (!session.IsRunning)
-            {
-                this.controller.RevalidateBeforeLaunch(session);
-                if (session.IsInvalid)
-                {
-                    this.PlaceholderText.Visibility = Visibility.Collapsed;
-                    this.ErrorText.Text = session.ToolTipText;
-                    this.ErrorText.Visibility = Visibility.Visible;
-                    return;
-                }
+            this.OpenTab(session);
+        }
+    }
 
-                this.LaunchSession(session);
+    // Ensures `session` has a tab in the strip and makes it the active one. Reselecting the same
+    // tree node twice in a row (or via RestoreOpenTabs/HandleFromHereRequest) never changes
+    // TabStrip.SelectedItem, so ActivateTab is called directly in that case since
+    // OnTabStripSelectionChanged wouldn't otherwise fire.
+    private void OpenTab(SessionNodeViewModel session)
+    {
+        if (!this.openTabs.Contains(session))
+        {
+            this.openTabs.Add(session);
+        }
+
+        if (ReferenceEquals(this.TabStrip.SelectedItem, session))
+        {
+            this.ActivateTab(session);
+        }
+        else
+        {
+            this.TabStrip.SelectedItem = session;
+        }
+    }
+
+    // Launches (if needed) and shows the given tab's pane. The sole place that flips a pane
+    // Visible - callers (OpenTab, OnTabStripSelectionChanged, RefreshSessionsCanvas) all funnel
+    // through here.
+    private void ActivateTab(SessionNodeViewModel session)
+    {
+        if (!session.IsRunning)
+        {
+            this.controller.RevalidateBeforeLaunch(session);
+            if (session.IsInvalid)
+            {
+                this.PlaceholderText.Visibility = Visibility.Collapsed;
+                this.ErrorText.Text = session.ToolTipText;
+                this.ErrorText.Visibility = Visibility.Visible;
+                return;
             }
 
-            this.ErrorText.Visibility = Visibility.Collapsed;
-            this.PlaceholderText.Visibility = Visibility.Collapsed;
-            session.LiveSession!.Host.Pane.View.Visibility = Visibility.Visible;
+            this.LaunchSession(session);
+        }
 
-            // Deferred rather than called inline: Pane.Focus() bottoms out in
-            // TerminalContainer_GotFocus, which calls native SetFocus on the terminal's hwnd -
-            // bypassing WPF's focus system. We're still nested inside the very TreeViewItem
-            // GotFocus/Selected dispatch that raised this SelectedItemChanged event, so stealing
-            // real Win32 focus now (before that dispatch unwinds) leaves WPF's FocusManager out of
-            // sync with what's actually focused. Left alone, this causes exactly the ancestor-
-            // misrouting bug described on OnItemPreviewMouseLeftButtonDown above: the following
-            // click resolves selection to the Project row instead of the session actually clicked.
-            // Posting the focus call lets the current dispatch finish first. Priority must be below
-            // Render (DispatcherPriority.Normal, the default, is numerically *higher* than Render -
-            // it would run before the layout pass that the Visibility flip just above schedules,
-            // and focusing a control before it's actually been laid out/rendered silently fails).
-            // ContextIdle guarantees the pending layout/render for the pane just made Visible has
-            // completed first.
-            var liveSession = session.LiveSession;
-            this.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => liveSession.Host.Pane.Focus()));
+        this.ErrorText.Visibility = Visibility.Collapsed;
+        this.PlaceholderText.Visibility = Visibility.Collapsed;
+        session.LiveSession!.Host.Pane.View.Visibility = Visibility.Visible;
+
+        // Deferred rather than called inline: Pane.Focus() bottoms out in
+        // TerminalContainer_GotFocus, which calls native SetFocus on the terminal's hwnd -
+        // bypassing WPF's focus system. We're still nested inside the very TreeViewItem/ListBoxItem
+        // GotFocus/Selected dispatch that raised this selection-changed event, so stealing real
+        // Win32 focus now (before that dispatch unwinds) leaves WPF's FocusManager out of sync with
+        // what's actually focused. Left alone, this causes exactly the ancestor-misrouting bug
+        // described on OnItemPreviewMouseLeftButtonDown above: the following click resolves
+        // selection to the Project row instead of the session actually clicked. Posting the focus
+        // call lets the current dispatch finish first. Priority must be below Render
+        // (DispatcherPriority.Normal, the default, is numerically *higher* than Render - it would
+        // run before the layout pass that the Visibility flip just above schedules, and focusing a
+        // control before it's actually been laid out/rendered silently fails). ContextIdle
+        // guarantees the pending layout/render for the pane just made Visible has completed first.
+        var liveSession = session.LiveSession;
+        this.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => liveSession.Host.Pane.Focus()));
+    }
+
+    // Fires on both user clicks on a tab and the programmatic TabStrip.SelectedItem assignments in
+    // OpenTab/CloseTab.
+    private void OnTabStripSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.RemovedItems.Count > 0 && e.RemovedItems[0] is SessionNodeViewModel { LiveSession: { } oldSession })
+        {
+            oldSession.Host.Pane.View.Visibility = Visibility.Collapsed;
+        }
+
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
+        {
+            session.ClearLatchedActivity();
+            this.ActivateTab(session);
+
+            // Keep the tree selection following the active tab (without recursing back into
+            // OpenTab, which would just re-select the already-active tab) - so the tree's
+            // highlighted row always matches what's on screen.
+            if (!ReferenceEquals(this.Tree.SelectedItem, session))
+            {
+                this.suppressSelectionSideEffects = true;
+                session.IsSelected = true;
+                this.suppressSelectionSideEffects = false;
+            }
+        }
+        else
+        {
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.PlaceholderText.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void OnCloseTabClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SessionNodeViewModel session)
+        {
+            this.CloseTab(session);
+        }
+    }
+
+    // Removes `session`'s tab from the strip. Deliberately does not stop the session - it keeps
+    // running in the background and reopens as a tab next time it's selected in the tree (or
+    // restored on next launch - see RestoreOpenTabs). "Stop" in the tree's context menu is the only
+    // way to actually kill it.
+    private void CloseTab(SessionNodeViewModel session)
+    {
+        var index = this.openTabs.IndexOf(session);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var wasActive = ReferenceEquals(this.TabStrip.SelectedItem, session);
+        this.openTabs.RemoveAt(index);
+
+        if (!wasActive)
+        {
+            return;
+        }
+
+        if (this.openTabs.Count > 0)
+        {
+            // Prefer the tab that slid into this index (i.e. what was the next tab), falling back
+            // to the new last tab - matches a browser/editor tab strip's close behavior.
+            this.TabStrip.SelectedItem = this.openTabs[Math.Min(index, this.openTabs.Count - 1)];
+        }
+        else if (session.IsSelected)
+        {
+            // No tabs left to fall back to. Removing the last tab already cleared
+            // TabStrip.SelectedItem to null (via OnTabStripSelectionChanged, triggered by the
+            // ObservableCollection change above), which shows the placeholder - but the tree still
+            // shows this node selected. Deselect it too, so clicking it again actually fires a new
+            // SelectedItemChanged (WPF doesn't raise one for reselecting an already-selected node)
+            // and reopens its tab instead of silently doing nothing.
+            session.IsSelected = false;
+        }
+    }
+
+    // Re-syncs the canvas with whatever tab is currently active - used when returning to the
+    // Sessions rail section (see SetRailSection), where simply replaying the tree selection would
+    // miss the case where a Project node (not the active tab's session) is what's tree-selected.
+    private void RefreshSessionsCanvas()
+    {
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
+        {
+            this.ActivateTab(session);
         }
         else
         {
@@ -350,6 +506,11 @@ public partial class MainWindow : Window
     private void OnSkillsRailIconClick(object sender, MouseButtonEventArgs e)
     {
         this.SetRailSection(RailSection.Skills);
+    }
+
+    private void OnSettingsRailIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetRailSection(RailSection.Settings);
     }
 
     private void SetRailSection(RailSection section)
@@ -370,33 +531,102 @@ public partial class MainWindow : Window
 
         this.SessionsAccentBar.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.SkillsAccentBar.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.SettingsAccentBar.Visibility = section == RailSection.Settings ? Visibility.Visible : Visibility.Collapsed;
         this.Tree.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.SkillsList.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.TabStripHost.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
+
+        // Both cleared unconditionally here - the branches below re-show whichever one actually
+        // applies (RefreshSkillsCanvas may re-show SkillDetail; the Settings branch always shows
+        // SettingsView). Neither is otherwise toggled anywhere else.
+        this.SkillDetail.Visibility = Visibility.Collapsed;
+        this.SettingsView.Visibility = Visibility.Collapsed;
 
         if (section == RailSection.Skills)
         {
-            // SessionViewHost's children are never hidden as a whole - only whichever pane
-            // OnTreeSelectedItemChanged last made Visible - so that pane needs hiding explicitly
-            // here; it's naturally re-shown by the replayed OnTreeSelectedItemChanged below when
-            // switching back.
+            // SessionViewHost's children are never hidden as a whole - only whichever pane is the
+            // active tab - so that pane needs hiding explicitly here; RefreshSessionsCanvas
+            // naturally re-shows it when switching back.
             this.HideActiveSessionPane();
             this.EnsureSkillsLoaded();
             this.RefreshSkillsCanvas();
         }
+        else if (section == RailSection.Settings)
+        {
+            this.HideActiveSessionPane();
+            this.PlaceholderText.Visibility = Visibility.Collapsed;
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.SettingsView.Visibility = Visibility.Visible;
+        }
         else
         {
-            this.SkillDetail.Visibility = Visibility.Collapsed;
-
-            // oldValue is deliberately null - HideActiveSessionPane already hid whatever pane was
-            // active before switching away from Sessions, so there's nothing left for
-            // OnTreeSelectedItemChanged's own e.OldValue handling to hide again.
-            this.OnTreeSelectedItemChanged(this, new RoutedPropertyChangedEventArgs<object>(null!, this.Tree.SelectedItem));
+            this.RefreshSessionsCanvas();
         }
+    }
+
+    // AppSettingsStore is best-effort (see its own remarks) - a failed Save here just means the
+    // toggle won't survive a restart, not a crash.
+    private void OnUseShiftEnterForNewlineChanged(object? sender, bool useShiftEnterForNewline)
+    {
+        this.appSettings = this.appSettings with { UseShiftEnterForNewline = useShiftEnterForNewline };
+        this.settingsStore.Save(this.appSettings);
+
+        // Only already-running sessions need pushing live - LaunchSession reads this.appSettings
+        // fresh for every session started after this point.
+        foreach (var node in this.controller.AllSessionNodes())
+        {
+            if (node.LiveSession is { } session)
+            {
+                session.Host.Pane.NewlineOnShiftEnter = useShiftEnterForNewline;
+            }
+        }
+    }
+
+    private void OnDefaultRootFolderChanged(object? sender, string? defaultRootFolder)
+    {
+        this.appSettings = this.appSettings with { DefaultRootFolder = defaultRootFolder };
+        this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnUseWorktreeByDefaultChanged(object? sender, bool useWorktreeByDefault)
+    {
+        this.appSettings = this.appSettings with { UseWorktreeByDefault = useWorktreeByDefault };
+        this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnDefaultPermissionModeChanged(object? sender, ClaudePermissionMode defaultPermissionMode)
+    {
+        this.appSettings = this.appSettings with { DefaultPermissionMode = defaultPermissionMode };
+        this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnThemeChanged(object? sender, AppTheme theme)
+    {
+        this.appSettings = this.appSettings with { Theme = theme };
+        this.settingsStore.Save(this.appSettings);
+
+        ThemeManager.Apply(theme);
+
+        // Chrome picks up the new theme automatically (every color is a DynamicResource), but
+        // each live terminal pane's colors were baked in at ApplyTheme time in LaunchSession, so
+        // already-running sessions need pushing explicitly - same pattern as
+        // OnUseShiftEnterForNewlineChanged. Sessions started after this point read
+        // this.appSettings.Theme fresh in LaunchSession.
+        var terminalTheme = ThemeManager.GetTerminalTheme(theme);
+        foreach (var node in this.controller.AllSessionNodes())
+        {
+            if (node.LiveSession is { } session)
+            {
+                session.Host.Pane.ApplyTheme(terminalTheme);
+            }
+        }
+
+        this.SkillDetail.RefreshTheme();
     }
 
     private void HideActiveSessionPane()
     {
-        if (this.Tree.SelectedItem is SessionNodeViewModel { LiveSession: { } session })
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel { LiveSession: { } session })
         {
             session.Host.Pane.View.Visibility = Visibility.Collapsed;
         }
@@ -747,10 +977,7 @@ public partial class MainWindow : Window
                 break;
 
             case SessionNodeViewModel session:
-                var addSessionMenu = new MenuItem { Header = "Add Session" };
-                addSessionMenu.Items.Add(CreateMenuItem("Choose Folder...", () => this.OnAddSessionChooseFolder(session)));
-                addSessionMenu.Items.Add(CreateMenuItem("Same Folder", () => this.OnAddSessionSameFolder(session)));
-                this.TreeContextMenu.Items.Add(addSessionMenu);
+                this.TreeContextMenu.Items.Add(CreateMenuItem("Add Session", () => this.OnAddSession(session)));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Import Session", () => this.OnImportSession(session)));
                 this.TreeContextMenu.Items.Add(new Separator());
 
@@ -790,61 +1017,27 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// A session added under an existing session defaults the form's folder field to that
+    /// session's own working directory (the old "Same Folder" shortcut's role, just editable now
+    /// instead of a separate menu item) - one under a Project defaults to the configured
+    /// DefaultRootFolder, falling back to the user's profile folder if none is set.
+    /// </summary>
     private void OnAddSession(TreeNodeViewModel parent)
     {
-        var nameDialog = new RenameDialog(string.Empty, "Add Session") { Owner = this };
-        if (nameDialog.ShowDialog() != true)
+        var defaultFolder = parent is SessionNodeViewModel parentSession
+            ? parentSession.WorkingDirectory
+            : this.appSettings.DefaultRootFolder is { Length: > 0 } configured
+                ? configured
+                : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        var dialog = new AddSessionDialog(defaultFolder, this.appSettings.UseWorktreeByDefault) { Owner = this };
+        if (dialog.ShowDialog() != true)
         {
             return;
         }
 
-        var folderDialog = new OpenFolderDialog
-        {
-            Title = "Choose a working directory for the new session",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        };
-
-        if (folderDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        this.controller.AddSession(parent, nameDialog.NewName, folderDialog.FolderName);
-    }
-
-    /// <summary>
-    /// "Add Session" -> "Choose Folder...": like <see cref="OnAddSession"/> but skips the name
-    /// prompt, naming the new session after the chosen folder (same as "Same Folder" below).
-    /// </summary>
-    private void OnAddSessionChooseFolder(SessionNodeViewModel parent)
-    {
-        var folderDialog = new OpenFolderDialog
-        {
-            Title = "Choose a working directory for the new session",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        };
-
-        if (folderDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        var name = GetFolderDisplayName(folderDialog.FolderName);
-        var session = this.controller.AddSession(parent, name, folderDialog.FolderName);
-        parent.IsExpanded = true;
-        session.IsSelected = true;
-    }
-
-    /// <summary>
-    /// "Add Session" -> "Same Folder": skips both prompts and nests a new session directly under
-    /// the clicked one, reusing its working directory and naming the new session after that
-    /// folder - for spinning up a second Claude conversation against the same codebase without
-    /// re-picking the folder every time.
-    /// </summary>
-    private void OnAddSessionSameFolder(SessionNodeViewModel parent)
-    {
-        var name = GetFolderDisplayName(parent.WorkingDirectory);
-        var session = this.controller.AddSession(parent, name, parent.WorkingDirectory);
+        var session = this.controller.AddSession(parent, dialog.SessionName, dialog.WorkingDirectory);
         parent.IsExpanded = true;
         session.IsSelected = true;
     }
@@ -879,9 +1072,14 @@ public partial class MainWindow : Window
 
     private void OnDelete(TreeNodeViewModel node)
     {
-        if (node is SessionNodeViewModel { IsRunning: true } session)
+        if (node is SessionNodeViewModel session)
         {
-            this.StopSession(session);
+            this.CloseTab(session);
+
+            if (session.IsRunning)
+            {
+                this.StopSession(session);
+            }
         }
 
         if (!this.controller.TryDelete(node, out var error))
@@ -920,19 +1118,14 @@ public partial class MainWindow : Window
             .Select(n => Task.Run(() => n.LiveSession!.Host.Dispose()))
             .ToArray());
 
-        foreach (var node in runningSessions)
-        {
-            // Host.Dispose() kills the claude process tree (ConPtyConnection.Dispose ->
-            // liveProcess.Kill(entireProcessTree: true)), and Claude Code writes its transcript
-            // synchronously per message, so by now the file would exist if the user ever actually
-            // sent anything. No transcript means the session was opened and abandoned without use -
-            // drop it instead of persisting a dead entry.
-            if (!File.Exists(ClaudeProjectPath.GetSessionFilePath(node.WorkingDirectory, node.ClaudeSessionId)))
-            {
-                this.controller.TryDelete(node, out _);
-            }
-        }
-
+        // Deliberately not pruning "unused" sessions here. Host.Dispose() force-kills the claude
+        // process tree (ConPtyConnection.Dispose -> liveProcess.Kill(entireProcessTree: true))
+        // rather than letting it exit gracefully, so claude never gets a chance to do whatever
+        // exit-time persistence an interactive session relies on - a transcript-file check right
+        // after that kill can't reliably tell "never used" apart from "used, but killed before it
+        // could flush" (confirmed: real, actively-used sessions were losing their transcript and
+        // getting silently deleted here). Better to keep an occasional empty placeholder node than
+        // to risk deleting a real conversation.
         this.controller.Flush();
 
         // RestoreBounds (rather than Left/Top/Width/Height directly) whenever the window isn't
@@ -943,6 +1136,15 @@ public partial class MainWindow : Window
             ? new Rect(this.Left, this.Top, this.Width, this.Height)
             : this.RestoreBounds;
 
+        // Only persist tabs whose session survived the drop-if-abandoned pass above - an id that
+        // no longer exists next launch would just be silently skipped by RestoreOpenTabs anyway,
+        // but filtering here keeps window-layout.json honest about what's actually still around.
+        var survivingSessionIds = this.controller.AllSessionNodes().Select(n => n.Id).ToHashSet();
+        var openTabIds = this.openTabs.Select(s => s.Id).Where(survivingSessionIds.Contains).ToList();
+        var activeTabId = this.TabStrip.SelectedItem is SessionNodeViewModel { } activeSession && survivingSessionIds.Contains(activeSession.Id)
+            ? activeSession.Id
+            : (Guid?)null;
+
         this.layoutStore.Save(new WindowLayout
         {
             Left = bounds.Left,
@@ -951,6 +1153,8 @@ public partial class MainWindow : Window
             Height = bounds.Height,
             IsMaximized = this.WindowState == WindowState.Maximized,
             TreeColumnWidth = this.TreeColumn.Width.Value,
+            OpenSessionTabIds = openTabIds,
+            ActiveSessionTabId = activeTabId,
         });
     }
 
@@ -988,6 +1192,64 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Reopens (and relaunches, running in the background) whatever tabs were open when the window
+    /// last closed - see OnClosing. Called from OnLoaded, same HWND-readiness constraint as
+    /// HandleFromHereRequest below: starting a session before SessionViewHost's terminal control
+    /// has a real HWND silently never attaches a client process to it.
+    /// </summary>
+    private void RestoreOpenTabs(WindowLayout? layout)
+    {
+        if (layout is null || layout.OpenSessionTabIds.Count == 0)
+        {
+            return;
+        }
+
+        var sessionsById = this.controller.AllSessionNodes().ToDictionary(n => n.Id);
+
+        foreach (var id in layout.OpenSessionTabIds)
+        {
+            if (!sessionsById.TryGetValue(id, out var session) || this.openTabs.Contains(session))
+            {
+                continue;
+            }
+
+            this.controller.RevalidateBeforeLaunch(session);
+            if (session.IsInvalid)
+            {
+                // Drop a tab whose session no longer validates (e.g. its working directory is
+                // gone) rather than restoring it just to immediately show an error nobody asked to
+                // see yet.
+                continue;
+            }
+
+            this.LaunchSession(session);
+            this.openTabs.Add(session);
+        }
+
+        if (this.openTabs.Count == 0)
+        {
+            return;
+        }
+
+        var active = layout.ActiveSessionTabId is { } activeId
+            ? this.openTabs.FirstOrDefault(s => s.Id == activeId) ?? this.openTabs[0]
+            : this.openTabs[0];
+
+        // Selecting the tree node runs the usual OnTreeSelectedItemChanged -> OpenTab path, which
+        // makes this the active tab and shows its (already-launched, per the loop above) pane.
+        ExpandAncestors(active);
+        active.IsSelected = true;
+    }
+
+    private static void ExpandAncestors(TreeNodeViewModel node)
+    {
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+        {
+            parent.IsExpanded = true;
+        }
+    }
+
+    /// <summary>
     /// Handles both the pipe-driven hand-off from an already-running instance and this same
     /// process's own --from-here startup argument - see App.FromHereRequests. Always runs on the
     /// UI thread.
@@ -1008,7 +1270,7 @@ public partial class MainWindow : Window
         }
 
         var uncategorized = this.controller.GetOrCreateUncategorized();
-        var name = GetFolderDisplayName(directory);
+        var name = FolderDisplayName.GetName(directory);
         var session = this.controller.AddSession(uncategorized, name, directory);
 
         // Launch unconditionally here rather than relying on selection to trigger it via
@@ -1028,13 +1290,6 @@ public partial class MainWindow : Window
         // container actually selects.
         uncategorized.IsExpanded = true;
         session.IsSelected = true;
-    }
-
-    private static string GetFolderDisplayName(string directory)
-    {
-        var trimmed = directory.TrimEnd('\\', '/');
-        var name = Path.GetFileName(trimmed);
-        return string.IsNullOrEmpty(name) ? trimmed : name;
     }
 
     // Selected bubbles from any selected descendant, so without this guard a session becoming
