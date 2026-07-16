@@ -31,6 +31,10 @@ public sealed class WpfSessionHost : ISessionHost
 
     public SessionState State { get; private set; } = SessionState.NotStarted;
 
+    public int? LastExitCode { get; private set; }
+
+    public string LastOutputTail { get; private set; } = string.Empty;
+
     public void Start(TerminalLaunchOptions options)
     {
         this.SetState(SessionState.Starting);
@@ -79,6 +83,8 @@ public sealed class WpfSessionHost : ISessionHost
 
     private void OnConnectionExited(object? sender, ProcessExitedEventArgs e)
     {
+        this.LastExitCode = e.ExitCode;
+        this.LastOutputTail = e.OutputTail;
         this.SetState(e.ExitCode == 0 ? SessionState.Exited : SessionState.Faulted);
     }
 

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using MultiClod.App.Import;
+using MultiClod.App.Native;
 
 namespace MultiClod.App;
 
@@ -17,6 +18,7 @@ public partial class ImportSessionWindow : Window
     public ImportSessionWindow(string? projectsRootOverride = null)
     {
         this.InitializeComponent();
+        DarkTitleBar.Apply(this);
 
         var root = projectsRootOverride
             ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "projects");

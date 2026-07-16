@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using static MultiClod.Terminal.ConPty.Native.ProcessApi;
 
 namespace MultiClod.Terminal.ConPty;
@@ -12,6 +13,35 @@ namespace MultiClod.Terminal.ConPty;
 /// </summary>
 internal static class ProcessFactory
 {
+    // Set by VS Code on any process it launches/debugs (F5, not just its integrated terminal),
+    // regardless of the "console" setting in launch.json - "externalTerminal" only changes where
+    // stdio is connected, not what env vars the debuggee inherits. Confirmed by hand: a session
+    // launched this way runs claude interactively (real responses, real MCP servers) but silently
+    // never persists a transcript or registers in ~/.claude/sessions - the same launch outside VS
+    // Code works fine. TERM_PROGRAM=vscode is the most likely single trigger (a common convention
+    // CLIs use to detect "running inside an editor" and special-case behavior), but since none of
+    // these are needed by claude and stripping them can't break anything, the whole family gets
+    // scrubbed rather than betting on isolating the exact one.
+    private static readonly HashSet<string> EditorInjectedVariablesToStrip = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TERM_PROGRAM",
+        "TERM_PROGRAM_VERSION",
+        "VSCODE_PID",
+        "VSCODE_CWD",
+        "VSCODE_NLS_CONFIG",
+        "VSCODE_IPC_HOOK",
+        "VSCODE_IPC_HOOK_CLI",
+        "VSCODE_INJECTION",
+        "VSCODE_IPC_HOOK_EXTHOST",
+        "VSCODE_IPC_HOOK_CLI_EXTHOST",
+        "VSCODE_GIT_ASKPASS_NODE",
+        "VSCODE_GIT_ASKPASS_EXTRA_ARGS",
+        "VSCODE_GIT_ASKPASS_MAIN",
+        "VSCODE_GIT_IPC_HANDLE",
+        "VSCODE_INSPECTOR_OPTIONS",
+        "ELECTRON_RUN_AS_NODE",
+    };
+
     internal static Win32Process Start(string commandLine, string workingDirectory, IntPtr attributes, IntPtr hPC)
     {
         var startupInfo = ConfigureProcessThread(hPC, attributes);
@@ -69,22 +99,57 @@ internal static class ProcessFactory
         var processSecurity = new SECURITY_ATTRIBUTES { nLength = securityAttributeSize };
         var threadSecurity = new SECURITY_ATTRIBUTES { nLength = securityAttributeSize };
 
-        var success = CreateProcess(
-            lpApplicationName: null,
-            lpCommandLine: commandLine,
-            lpProcessAttributes: ref processSecurity,
-            lpThreadAttributes: ref threadSecurity,
-            bInheritHandles: false,
-            dwCreationFlags: EXTENDED_STARTUPINFO_PRESENT,
-            lpEnvironment: IntPtr.Zero,
-            lpCurrentDirectory: string.IsNullOrEmpty(workingDirectory) ? null : workingDirectory,
-            lpStartupInfo: ref startupInfo,
-            lpProcessInformation: out PROCESS_INFORMATION processInfo);
-        if (!success)
+        var environmentBlock = BuildEnvironmentBlock();
+        try
         {
-            throw new InvalidOperationException("Could not create process. " + Marshal.GetLastWin32Error());
+            var success = CreateProcess(
+                lpApplicationName: null,
+                lpCommandLine: commandLine,
+                lpProcessAttributes: ref processSecurity,
+                lpThreadAttributes: ref threadSecurity,
+                bInheritHandles: false,
+                dwCreationFlags: EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                lpEnvironment: environmentBlock,
+                lpCurrentDirectory: string.IsNullOrEmpty(workingDirectory) ? null : workingDirectory,
+                lpStartupInfo: ref startupInfo,
+                lpProcessInformation: out PROCESS_INFORMATION processInfo);
+            if (!success)
+            {
+                throw new InvalidOperationException("Could not create process. " + Marshal.GetLastWin32Error());
+            }
+
+            return processInfo;
+        }
+        finally
+        {
+            // Safe to free right after CreateProcess returns - it copies the block into the new
+            // process's own address space rather than referencing this memory afterward.
+            Marshal.FreeHGlobal(environmentBlock);
+        }
+    }
+
+    /// <summary>
+    /// Builds a CreateProcessW-shaped environment block (sequential "KEY=VALUE\0" strings,
+    /// double-null-terminated) from this process's own environment, minus
+    /// <see cref="EditorInjectedVariablesToStrip"/>. Passing an explicit block instead of
+    /// IntPtr.Zero (inherit-everything) is what makes the strip effective - CreateProcess still
+    /// inherits nothing beyond what's in this block.
+    /// </summary>
+    private static IntPtr BuildEnvironmentBlock()
+    {
+        var block = new StringBuilder();
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            var key = (string)entry.Key;
+            if (EditorInjectedVariablesToStrip.Contains(key))
+            {
+                continue;
+            }
+
+            block.Append(key).Append('=').Append(entry.Value).Append('\0');
         }
 
-        return processInfo;
+        block.Append('\0');
+        return Marshal.StringToHGlobalUni(block.ToString());
     }
 }

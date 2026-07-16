@@ -27,12 +27,15 @@ namespace Microsoft.Terminal.Wpf
         // interpret as "quoted insert" rather than a paste.
         private const ushort VkV = 0x56;
 
+        private const ushort VkReturn = 0x0D;
+
         private ITerminalConnection connection;
         private IntPtr hwnd;
         private IntPtr terminal;
         private NativeMethods.ScrollCallback scrollCallback;
         private NativeMethods.WriteCallback writeCallback;
         private bool suppressNextCtrlVChar;
+        private bool suppressNextEnterChar;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TerminalContainer"/> class.
@@ -64,6 +67,14 @@ namespace Microsoft.Terminal.Wpf
         /// on user action.
         /// </summary>
         internal bool AutoResize { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether Shift+Enter (with no other modifier) sends a
+        /// literal newline to the connection instead of forwarding Enter's normal behavior -
+        /// mirrors how Ctrl+Enter is written directly, bypassing the write path entirely so no
+        /// escape-sequence guessing about what the connected process expects is needed.
+        /// </summary>
+        internal bool NewlineOnShiftEnter { get; set; }
 
         /// <summary>
         /// Gets or sets the size of the parent user control that hosts the terminal hwnd.
@@ -367,6 +378,19 @@ namespace Microsoft.Terminal.Wpf
                                 break;
                             }
 
+                            // Written directly to the connection, same as paste above, rather than
+                            // forwarded as a key event with remapped modifiers - there's no reliable
+                            // way to make the native terminal core treat this as if Ctrl (not Shift)
+                            // were held, and the connected process only ever sees the resulting byte
+                            // anyway, not which key produced it.
+                            if (this.NewlineOnShiftEnter && vkey == VkReturn && Keyboard.Modifiers == ModifierKeys.Shift)
+                            {
+                                this.Connection?.WriteInput("\n");
+                                this.suppressNextEnterChar = true;
+                                handled = true;
+                                break;
+                            }
+
                             NativeMethods.TerminalSendKeyEvent(this.terminal, vkey, scanCode, flags, true);
                             break;
                         }
@@ -391,6 +415,15 @@ namespace Microsoft.Terminal.Wpf
                             if (this.suppressNextCtrlVChar)
                             {
                                 this.suppressNextCtrlVChar = false;
+                                handled = true;
+                                break;
+                            }
+
+                            // Swallows the '\r' TranslateMessage generates for the Enter keydown
+                            // already handled (and written as '\n') in WM_KEYDOWN above.
+                            if (this.suppressNextEnterChar)
+                            {
+                                this.suppressNextEnterChar = false;
                                 handled = true;
                                 break;
                             }

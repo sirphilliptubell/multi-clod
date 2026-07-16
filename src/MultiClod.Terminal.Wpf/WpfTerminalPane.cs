@@ -121,6 +121,12 @@ public sealed class WpfTerminalPane : ITerminalPane
         set => this.titleText.Text = value;
     }
 
+    public bool NewlineOnShiftEnter
+    {
+        get => this.control.NewlineOnShiftEnter;
+        set => this.control.NewlineOnShiftEnter = value;
+    }
+
     public event EventHandler? CloseRequested;
 
     public void Attach(IPtyConnection connection)

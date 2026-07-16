@@ -64,6 +64,16 @@ namespace Microsoft.Terminal.Wpf
         }
 
         /// <summary>
+        /// Gets or sets a value indicating whether Shift+Enter sends a newline to the connection
+        /// instead of Enter's normal behavior. See TerminalContainer.NewlineOnShiftEnter.
+        /// </summary>
+        public bool NewlineOnShiftEnter
+        {
+            get => this.termContainer.NewlineOnShiftEnter;
+            set => this.termContainer.NewlineOnShiftEnter = value;
+        }
+
+        /// <summary>
         /// Gets size of the terminal renderer.
         /// </summary>
         private Size TerminalRendererSize

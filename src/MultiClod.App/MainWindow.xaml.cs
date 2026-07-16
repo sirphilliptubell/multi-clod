@@ -15,9 +15,9 @@ using Microsoft.Win32;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
+using MultiClod.App.Settings;
 using MultiClod.App.Skills;
 using MultiClod.App.Updates;
-using MultiClod.App.Validation;
 using MultiClod.Terminal.Abstractions;
 using MultiClod.Terminal.Wpf;
 
@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private readonly SessionStore store;
     private readonly SessionTreeController controller;
     private readonly WindowLayoutStore layoutStore;
+    private readonly AppSettingsStore settingsStore;
+    private AppSettings appSettings;
     private readonly ClaudeSessionHooksInstaller hooksInstaller;
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
@@ -85,6 +87,8 @@ public partial class MainWindow : Window
     {
         this.InitializeComponent();
 
+        DarkTitleBar.Apply(this);
+
 #if DEBUG
         // Visibly distinguishes a Debug build's window from a concurrently-running Release
         // instance (see FromHereProtocol's Debug/Release isolation) so the two are never confused.
@@ -110,6 +114,13 @@ public partial class MainWindow : Window
 
         this.layoutStore = new WindowLayoutStore();
         ApplyWindowLayout(this, this.TreeColumn, this.layoutStore.Load());
+
+        this.settingsStore = new AppSettingsStore();
+        this.appSettings = this.settingsStore.Load();
+        this.SettingsView.LoadSettings(this.appSettings);
+        this.SettingsView.UseShiftEnterForNewlineChanged += this.OnUseShiftEnterForNewlineChanged;
+        this.SettingsView.DefaultRootFolderChanged += this.OnDefaultRootFolderChanged;
+        this.SettingsView.UseWorktreeByDefaultChanged += this.OnUseWorktreeByDefaultChanged;
 
         // Best-effort - see ClaudeSessionHooksInstaller.SettingsFilePath, which LaunchSession
         // checks before appending --settings, so a failed write here just forgoes activity icons.
@@ -177,6 +188,7 @@ public partial class MainWindow : Window
 
         var host = new WpfSessionHost();
         host.Pane.ApplyTheme(SessionTheme);
+        host.Pane.NewlineOnShiftEnter = this.appSettings.UseShiftEnterForNewline;
         host.Pane.Title = node.DisplayTitle;
         host.CloseRequested += (_, _) => this.StopSession(node);
 
@@ -251,6 +263,13 @@ public partial class MainWindow : Window
                         SessionActivitySounds.PlayDone();
                     }
                 }
+            }
+            else if (e.PropertyName == nameof(TerminalSession.State) && session.State == SessionState.Faulted)
+            {
+                // See SessionDiagnosticsLog - captures the exit code and whatever the process
+                // printed right before dying, since by the time a user notices "Faulted" the
+                // terminal pane itself has often already moved on or been closed.
+                SessionDiagnosticsLog.LogFault(node.Name, node.WorkingDirectory, commandLine, host.LastExitCode, host.LastOutputTail);
             }
         };
 
@@ -343,6 +362,11 @@ public partial class MainWindow : Window
         this.SetRailSection(RailSection.Skills);
     }
 
+    private void OnSettingsRailIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetRailSection(RailSection.Settings);
+    }
+
     private void SetRailSection(RailSection section)
     {
         if (this.currentRailSection == section)
@@ -361,8 +385,15 @@ public partial class MainWindow : Window
 
         this.SessionsAccentBar.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.SkillsAccentBar.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.SettingsAccentBar.Visibility = section == RailSection.Settings ? Visibility.Visible : Visibility.Collapsed;
         this.Tree.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.SkillsList.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+
+        // Both cleared unconditionally here - the branches below re-show whichever one actually
+        // applies (RefreshSkillsCanvas may re-show SkillDetail; the Settings branch always shows
+        // SettingsView). Neither is otherwise toggled anywhere else.
+        this.SkillDetail.Visibility = Visibility.Collapsed;
+        this.SettingsView.Visibility = Visibility.Collapsed;
 
         if (section == RailSection.Skills)
         {
@@ -374,15 +405,50 @@ public partial class MainWindow : Window
             this.EnsureSkillsLoaded();
             this.RefreshSkillsCanvas();
         }
+        else if (section == RailSection.Settings)
+        {
+            this.HideActiveSessionPane();
+            this.PlaceholderText.Visibility = Visibility.Collapsed;
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.SettingsView.Visibility = Visibility.Visible;
+        }
         else
         {
-            this.SkillDetail.Visibility = Visibility.Collapsed;
-
             // oldValue is deliberately null - HideActiveSessionPane already hid whatever pane was
             // active before switching away from Sessions, so there's nothing left for
             // OnTreeSelectedItemChanged's own e.OldValue handling to hide again.
             this.OnTreeSelectedItemChanged(this, new RoutedPropertyChangedEventArgs<object>(null!, this.Tree.SelectedItem));
         }
+    }
+
+    // AppSettingsStore is best-effort (see its own remarks) - a failed Save here just means the
+    // toggle won't survive a restart, not a crash.
+    private void OnUseShiftEnterForNewlineChanged(object? sender, bool useShiftEnterForNewline)
+    {
+        this.appSettings = this.appSettings with { UseShiftEnterForNewline = useShiftEnterForNewline };
+        this.settingsStore.Save(this.appSettings);
+
+        // Only already-running sessions need pushing live - LaunchSession reads this.appSettings
+        // fresh for every session started after this point.
+        foreach (var node in this.controller.AllSessionNodes())
+        {
+            if (node.LiveSession is { } session)
+            {
+                session.Host.Pane.NewlineOnShiftEnter = useShiftEnterForNewline;
+            }
+        }
+    }
+
+    private void OnDefaultRootFolderChanged(object? sender, string? defaultRootFolder)
+    {
+        this.appSettings = this.appSettings with { DefaultRootFolder = defaultRootFolder };
+        this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnUseWorktreeByDefaultChanged(object? sender, bool useWorktreeByDefault)
+    {
+        this.appSettings = this.appSettings with { UseWorktreeByDefault = useWorktreeByDefault };
+        this.settingsStore.Save(this.appSettings);
     }
 
     private void HideActiveSessionPane()
@@ -733,10 +799,7 @@ public partial class MainWindow : Window
                 break;
 
             case SessionNodeViewModel session:
-                var addSessionMenu = new MenuItem { Header = "Add Session" };
-                addSessionMenu.Items.Add(CreateMenuItem("Choose Folder...", () => this.OnAddSessionChooseFolder(session)));
-                addSessionMenu.Items.Add(CreateMenuItem("Same Folder", () => this.OnAddSessionSameFolder(session)));
-                this.TreeContextMenu.Items.Add(addSessionMenu);
+                this.TreeContextMenu.Items.Add(CreateMenuItem("Add Session", () => this.OnAddSession(session)));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Import Session", () => this.OnImportSession(session)));
                 this.TreeContextMenu.Items.Add(new Separator());
 
@@ -766,61 +829,27 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// A session added under an existing session defaults the form's folder field to that
+    /// session's own working directory (the old "Same Folder" shortcut's role, just editable now
+    /// instead of a separate menu item) - one under a Project defaults to the configured
+    /// DefaultRootFolder, falling back to the user's profile folder if none is set.
+    /// </summary>
     private void OnAddSession(TreeNodeViewModel parent)
     {
-        var nameDialog = new RenameDialog(string.Empty, "Add Session") { Owner = this };
-        if (nameDialog.ShowDialog() != true)
+        var defaultFolder = parent is SessionNodeViewModel parentSession
+            ? parentSession.WorkingDirectory
+            : this.appSettings.DefaultRootFolder is { Length: > 0 } configured
+                ? configured
+                : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        var dialog = new AddSessionDialog(defaultFolder, this.appSettings.UseWorktreeByDefault) { Owner = this };
+        if (dialog.ShowDialog() != true)
         {
             return;
         }
 
-        var folderDialog = new OpenFolderDialog
-        {
-            Title = "Choose a working directory for the new session",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        };
-
-        if (folderDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        this.controller.AddSession(parent, nameDialog.NewName, folderDialog.FolderName);
-    }
-
-    /// <summary>
-    /// "Add Session" -> "Choose Folder...": like <see cref="OnAddSession"/> but skips the name
-    /// prompt, naming the new session after the chosen folder (same as "Same Folder" below).
-    /// </summary>
-    private void OnAddSessionChooseFolder(SessionNodeViewModel parent)
-    {
-        var folderDialog = new OpenFolderDialog
-        {
-            Title = "Choose a working directory for the new session",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        };
-
-        if (folderDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        var name = GetFolderDisplayName(folderDialog.FolderName);
-        var session = this.controller.AddSession(parent, name, folderDialog.FolderName);
-        parent.IsExpanded = true;
-        session.IsSelected = true;
-    }
-
-    /// <summary>
-    /// "Add Session" -> "Same Folder": skips both prompts and nests a new session directly under
-    /// the clicked one, reusing its working directory and naming the new session after that
-    /// folder - for spinning up a second Claude conversation against the same codebase without
-    /// re-picking the folder every time.
-    /// </summary>
-    private void OnAddSessionSameFolder(SessionNodeViewModel parent)
-    {
-        var name = GetFolderDisplayName(parent.WorkingDirectory);
-        var session = this.controller.AddSession(parent, name, parent.WorkingDirectory);
+        var session = this.controller.AddSession(parent, dialog.SessionName, dialog.WorkingDirectory);
         parent.IsExpanded = true;
         session.IsSelected = true;
     }
@@ -917,19 +946,14 @@ public partial class MainWindow : Window
             .Select(n => Task.Run(() => n.LiveSession!.Host.Dispose()))
             .ToArray());
 
-        foreach (var node in runningSessions)
-        {
-            // Host.Dispose() kills the claude process tree (ConPtyConnection.Dispose ->
-            // liveProcess.Kill(entireProcessTree: true)), and Claude Code writes its transcript
-            // synchronously per message, so by now the file would exist if the user ever actually
-            // sent anything. No transcript means the session was opened and abandoned without use -
-            // drop it instead of persisting a dead entry.
-            if (!File.Exists(ClaudeProjectPath.GetSessionFilePath(node.WorkingDirectory, node.ClaudeSessionId)))
-            {
-                this.controller.TryDelete(node, out _);
-            }
-        }
-
+        // Deliberately not pruning "unused" sessions here. Host.Dispose() force-kills the claude
+        // process tree (ConPtyConnection.Dispose -> liveProcess.Kill(entireProcessTree: true))
+        // rather than letting it exit gracefully, so claude never gets a chance to do whatever
+        // exit-time persistence an interactive session relies on - a transcript-file check right
+        // after that kill can't reliably tell "never used" apart from "used, but killed before it
+        // could flush" (confirmed: real, actively-used sessions were losing their transcript and
+        // getting silently deleted here). Better to keep an occasional empty placeholder node than
+        // to risk deleting a real conversation.
         this.controller.Flush();
 
         // RestoreBounds (rather than Left/Top/Width/Height directly) whenever the window isn't
@@ -1005,7 +1029,7 @@ public partial class MainWindow : Window
         }
 
         var uncategorized = this.controller.GetOrCreateUncategorized();
-        var name = GetFolderDisplayName(directory);
+        var name = FolderDisplayName.GetName(directory);
         var session = this.controller.AddSession(uncategorized, name, directory);
 
         // Launch unconditionally here rather than relying on selection to trigger it via
@@ -1025,13 +1049,6 @@ public partial class MainWindow : Window
         // container actually selects.
         uncategorized.IsExpanded = true;
         session.IsSelected = true;
-    }
-
-    private static string GetFolderDisplayName(string directory)
-    {
-        var trimmed = directory.TrimEnd('\\', '/');
-        var name = Path.GetFileName(trimmed);
-        return string.IsNullOrEmpty(name) ? trimmed : name;
     }
 
     // Selected bubbles from any selected descendant, so without this guard a session becoming

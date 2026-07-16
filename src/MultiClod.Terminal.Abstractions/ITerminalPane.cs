@@ -14,6 +14,12 @@ public interface ITerminalPane : IDisposable
 
     string Title { set; }
 
+    /// <summary>
+    /// When true, Shift+Enter sends a newline to the running process instead of Enter's normal
+    /// submit behavior - see TerminalContainer.NewlineOnShiftEnter, which this ultimately reaches.
+    /// </summary>
+    bool NewlineOnShiftEnter { get; set; }
+
     event EventHandler? CloseRequested;
 
     void Attach(IPtyConnection connection);

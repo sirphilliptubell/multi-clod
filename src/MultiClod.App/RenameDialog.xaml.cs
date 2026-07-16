@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using MultiClod.App.Native;
 
 namespace MultiClod.App;
 
@@ -10,6 +11,7 @@ public partial class RenameDialog : Window
     public RenameDialog(string currentName, string title = "Rename Session", Func<string, string?>? validate = null)
     {
         this.InitializeComponent();
+        DarkTitleBar.Apply(this);
         this.Title = title;
         this.validate = validate;
         this.NameBox.Text = currentName;

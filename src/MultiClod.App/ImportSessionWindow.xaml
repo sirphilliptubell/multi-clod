@@ -5,7 +5,8 @@
         Title="Import Session" Height="960" Width="1640"
         MaxHeight="{x:Static sys:SystemParameters.PrimaryScreenHeight}"
         MaxWidth="{x:Static sys:SystemParameters.PrimaryScreenWidth}"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E1E">
     <!-- Same SystemColors overrides as MainWindow.xaml's TreeView.Resources, so the DataGrid's
          selection highlight matches the rest of the app's dark theme instead of the stock
          light-gray ListBox/DataGrid selection colors. Control.Foreground inherits down the tree,
