@@ -223,6 +223,79 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!--
+            One tab per open session in the main panel's tab strip (MainWindow.TabStrip) - see
+            MainWindow.OpenTab/CloseTab. Mirrors the tree's status-dot glyphs (IsHollow/NeedsInput/
+            Done) so a background tab still signals it needs attention without switching to it, but
+            skips the tree's animated Starting/Working spinners - not worth the extra visual noise
+            at tab-strip size.
+        -->
+        <DataTemplate x:Key="SessionTabItemTemplate">
+            <StackPanel Orientation="Horizontal" Margin="6,3" ToolTip="{Binding ToolTipText}">
+                <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                    <Ellipse x:Name="TabStatusDot" Width="8" Height="8" Fill="{Binding StatusBrush}"
+                             Stroke="{Binding StatusBrush}" StrokeThickness="1.5" />
+                    <Grid x:Name="TabNeedsInputGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Orange" />
+                        <TextBlock Text="?" FontSize="8" FontWeight="Bold" Foreground="Black"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
+                    <Grid x:Name="TabDoneGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Teal" />
+                        <TextBlock Text="&#10003;" FontSize="7" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
+                </Grid>
+                <TextBlock Text="{Binding DisplayTitle}" Foreground="White" VerticalAlignment="Center"
+                           MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                <Button Content="&#10005;" Width="16" Height="16" Margin="8,0,0,0" Padding="0"
+                        Background="Transparent" BorderThickness="0" Foreground="Gray" Cursor="Hand"
+                        VerticalAlignment="Center" Click="OnCloseTabClick" ToolTip="Close tab" />
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsHollow}" Value="True">
+                    <Setter TargetName="TabStatusDot" Property="Fill" Value="Transparent" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.NeedsInput}">
+                    <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="TabNeedsInputGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Done}">
+                    <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="TabDoneGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Selected tab gets the same blue accent (bottom edge) as the tree's focused-selection
+             highlight, for visual consistency; unselected tabs are flat with a thin divider. -->
+        <Style x:Key="SessionTabItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,1,2" />
+            <Setter Property="BorderBrush" Value="#2D2D30" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1E1E1E" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3A96DD" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252526" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <!-- BorderThickness starts at 0 (invisible) - MainWindow's ctor sets it to a visible red
@@ -349,29 +422,57 @@
                       Background="#1E1E1E" ResizeBehavior="PreviousAndNext" />
 
         <Grid Grid.Column="3">
-            <!--
-                Shown whenever the current selection isn't a running session (nothing selected, a
-                Project selected, or a dormant session before it's launched/validated) and no skill
-                is selected either. Always present, never removed - only Visibility toggles, same
-                rule as the session panes and SkillDetail below.
-            -->
-            <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="Gray"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-
-            <!-- Shown instead of launching when the selected dormant session fails validation. -->
-            <TextBlock x:Name="ErrorText" Foreground="OrangeRed" TextWrapping="Wrap" MaxWidth="500"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
             <!--
-                Every running session's Pane.View is added here exactly once, permanently, for
-                that host's entire lifetime. Selection only ever toggles Visibility - never swap
-                Content/Children membership for a live view. See the comment in
-                MainWindow.LaunchSession for why.
+                Tab strip: one tab per session opened from the Tree (see MainWindow.OpenTab),
+                independent of which tree node happens to be selected - selecting a Project node no
+                longer disturbs whichever tab is active (see MainWindow.OnTreeSelectedItemChanged).
+                Collapsed entirely while the Skills rail section is active - see SetRailSection.
             -->
-            <Grid x:Name="SessionViewHost" />
+            <Border x:Name="TabStripHost" Grid.Row="0" Background="#181818" BorderBrush="#2D2D30" BorderThickness="0,0,0,1">
+                <ListBox x:Name="TabStrip" Background="Transparent" BorderThickness="0"
+                         ItemTemplate="{StaticResource SessionTabItemTemplate}"
+                         ItemContainerStyle="{StaticResource SessionTabItemContainerStyle}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         SelectionChanged="OnTabStripSelectionChanged">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+            </Border>
 
-            <!-- Rendered/edited SKILL.md for the currently selected skill - see Skills\SkillDetailView. -->
-            <skills:SkillDetailView x:Name="SkillDetail" Visibility="Collapsed" />
+            <Grid Grid.Row="1">
+                <!--
+                    Shown whenever there's no active tab (nothing ever opened, or the active tab
+                    was just closed) and no skill is selected either. Always present, never
+                    removed - only Visibility toggles, same rule as the session panes and
+                    SkillDetail below.
+                -->
+                <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="Gray"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                <!-- Shown instead of launching when the active tab's session fails validation. -->
+                <TextBlock x:Name="ErrorText" Foreground="OrangeRed" TextWrapping="Wrap" MaxWidth="500"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+
+                <!--
+                    Every running session's Pane.View is added here exactly once, permanently, for
+                    that host's entire lifetime. Tab switching only ever toggles Visibility - never
+                    swap Content/Children membership for a live view. See the comment in
+                    MainWindow.LaunchSession for why.
+                -->
+                <Grid x:Name="SessionViewHost" />
+
+                <!-- Rendered/edited SKILL.md for the currently selected skill - see Skills\SkillDetailView. -->
+                <skills:SkillDetailView x:Name="SkillDetail" Visibility="Collapsed" />
+            </Grid>
         </Grid>
     </Grid>
     </Border>
