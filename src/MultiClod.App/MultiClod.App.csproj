@@ -5,11 +5,19 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <StartupObject>MultiClod.App.App</StartupObject>
-    <!-- AssemblyName/packId stay MultiClod.App (the update feed's identity for existing installs
-         must never change) - these only affect the exe's own file-properties/Task Manager display
-         name, matching the packTitle passed to vpk in Publish-MultiClodApp.ps1. -->
+    <!-- AssemblyTitle/Product are just file-properties/Task Manager display name - packId (the
+         update feed's identity for existing installs) is set separately and explicitly via the
+         packId flag in release.yml's vpk pack step, so it never changes regardless of AssemblyName. -->
     <AssemblyTitle>Multi-Clod</AssemblyTitle>
     <Product>Multi-Clod</Product>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <!-- Debug builds get a distinct exe name so a running Release install (the one actually being
+         used day-to-day) never gets killed/locked when Claude builds or launches a Debug build for
+         testing. Release is untouched - release.yml's vpk pack step hardcodes the mainExe flag to
+         MultiClod.App.exe regardless of this. -->
+    <AssemblyName>MultiClod.App-debug</AssemblyName>
   </PropertyGroup>
 
   <PropertyGroup>
