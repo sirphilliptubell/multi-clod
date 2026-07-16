@@ -121,6 +121,7 @@ public partial class MainWindow : Window
         this.SettingsView.UseShiftEnterForNewlineChanged += this.OnUseShiftEnterForNewlineChanged;
         this.SettingsView.DefaultRootFolderChanged += this.OnDefaultRootFolderChanged;
         this.SettingsView.UseWorktreeByDefaultChanged += this.OnUseWorktreeByDefaultChanged;
+        this.SettingsView.DefaultPermissionModeChanged += this.OnDefaultPermissionModeChanged;
 
         // Best-effort - see ClaudeSessionHooksInstaller.SettingsFilePath, which LaunchSession
         // checks before appending --settings, so a failed write here just forgoes activity icons.
@@ -218,6 +219,19 @@ public partial class MainWindow : Window
         {
             commandLine += $" --settings \"{settingsPath}\"";
         }
+
+        // Always passed (rather than only for non-Manual modes) so this setting deterministically
+        // picks the startup mode regardless of whatever defaultMode the user's own global Claude
+        // Code settings.json might otherwise apply.
+        var permissionModeFlag = this.appSettings.DefaultPermissionMode switch
+        {
+            ClaudePermissionMode.Auto => "auto",
+            ClaudePermissionMode.AcceptEdits => "acceptEdits",
+            ClaudePermissionMode.Plan => "plan",
+            ClaudePermissionMode.BypassPermissions => "bypassPermissions",
+            _ => "manual",
+        };
+        commandLine += $" --permission-mode {permissionModeFlag}";
 
         host.Start(new TerminalLaunchOptions { WorkingDirectory = node.WorkingDirectory, CommandLine = commandLine });
 
@@ -448,6 +462,12 @@ public partial class MainWindow : Window
     private void OnUseWorktreeByDefaultChanged(object? sender, bool useWorktreeByDefault)
     {
         this.appSettings = this.appSettings with { UseWorktreeByDefault = useWorktreeByDefault };
+        this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnDefaultPermissionModeChanged(object? sender, ClaudePermissionMode defaultPermissionMode)
+    {
+        this.appSettings = this.appSettings with { DefaultPermissionMode = defaultPermissionMode };
         this.settingsStore.Save(this.appSettings);
     }
 

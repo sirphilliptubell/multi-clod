@@ -29,4 +29,11 @@ public sealed record AppSettings
     /// does.
     /// </summary>
     public bool UseWorktreeByDefault { get; init; }
+
+    /// <summary>
+    /// The --permission-mode a brand-new session's `claude` process is launched with - see
+    /// MainWindow.LaunchSession. Defaults to Manual (enum value 0), matching Claude Code's own
+    /// safest-by-default behavior for a session nothing has configured yet.
+    /// </summary>
+    public ClaudePermissionMode DefaultPermissionMode { get; init; }
 }

@@ -40,12 +40,28 @@ public partial class SettingsView : UserControl
     /// </summary>
     internal event EventHandler<bool>? UseWorktreeByDefaultChanged;
 
+    /// <summary>
+    /// Raised only in response to the user actually picking a radio option - MainWindow persists
+    /// it and applies it to sessions launched from then on.
+    /// </summary>
+    internal event EventHandler<ClaudePermissionMode>? DefaultPermissionModeChanged;
+
     internal void LoadSettings(AppSettings settings)
     {
         this.suppressChangeEvents = true;
         this.ShiftEnterToggle.IsChecked = settings.UseShiftEnterForNewline;
         this.DefaultRootFolderBox.Text = settings.DefaultRootFolder ?? string.Empty;
         this.WorktreeToggle.IsChecked = settings.UseWorktreeByDefault;
+
+        this.PermissionModeCombo.SelectedIndex = settings.DefaultPermissionMode switch
+        {
+            ClaudePermissionMode.Auto => 1,
+            ClaudePermissionMode.AcceptEdits => 2,
+            ClaudePermissionMode.Plan => 3,
+            ClaudePermissionMode.BypassPermissions => 4,
+            _ => 0,
+        };
+
         this.suppressChangeEvents = false;
     }
 
@@ -86,5 +102,16 @@ public partial class SettingsView : UserControl
         }
 
         this.UseWorktreeByDefaultChanged?.Invoke(this, this.WorktreeToggle.IsChecked == true);
+    }
+
+    private void OnPermissionModeSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressChangeEvents)
+        {
+            return;
+        }
+
+        var tag = (string)((ComboBoxItem)this.PermissionModeCombo.SelectedItem).Tag;
+        this.DefaultPermissionModeChanged?.Invoke(this, Enum.Parse<ClaudePermissionMode>(tag));
     }
 }

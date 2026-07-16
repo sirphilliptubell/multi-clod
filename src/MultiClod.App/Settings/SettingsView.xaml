@@ -26,6 +26,76 @@
                 <Setter Property="BorderBrush" Value="#3F3F3F" />
                 <Setter Property="Padding" Value="10,6" />
             </Style>
+
+            <!-- Full retemplate, not just Background/Foreground setters - same reason as
+                 AddSessionDialog's ComboBox: the default Aero2 chrome draws its closed-box text
+                 and item-hover highlight via internal SystemColors-bound brushes a plain Setter
+                 can't reach, which would otherwise leave this dark-on-dark and unreadable. -->
+            <Style TargetType="ComboBoxItem">
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border x:Name="Bd" Background="#2A2A2A" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#3A96DD" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="ComboBox">
+                <Setter Property="Background" Value="#2A2A2A" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="BorderBrush" Value="#3F3F3F" />
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
+                                              Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="24" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Path Grid.Column="1" Data="M0,0 L4,4 L8,0 Z" Fill="White"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
+                                                  Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
+                                       PopupAnimation="Slide" IsOpen="{TemplateBinding IsDropDownOpen}">
+                                    <Border Background="#2A2A2A" BorderBrush="#3F3F3F" BorderThickness="1"
+                                            MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="200">
+                                        <ScrollViewer>
+                                            <ItemsPresenter />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
     <Grid Background="#1E1E1E">
@@ -63,6 +133,18 @@
             </StackPanel>
             <TextBlock Text="Pre-checks &quot;Create a git worktree&quot; in the Add Session form - still editable per session."
                        Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
+
+            <TextBlock Text="Default permission mode" Foreground="White" Margin="0,16,0,4" />
+            <ComboBox x:Name="PermissionModeCombo" HorizontalAlignment="Left" MinWidth="260"
+                      SelectionChanged="OnPermissionModeSelectionChanged">
+                <ComboBoxItem Tag="Manual" Content="Manual (ask before every action)" />
+                <ComboBoxItem Tag="Auto" Content="Auto (classifier decides what needs approval)" />
+                <ComboBoxItem Tag="AcceptEdits" Content="Accept edits automatically" />
+                <ComboBoxItem Tag="Plan" Content="Plan mode (research only, no changes)" />
+                <ComboBoxItem Tag="BypassPermissions" Content="Bypass permissions (no prompts at all)" />
+            </ComboBox>
+            <TextBlock Text="Which mode a brand-new session's claude process starts in (same modes Shift+Tab cycles through inside a session). Only applies to sessions launched after this is changed."
+                       Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
         </StackPanel>
     </Grid>
 </UserControl>

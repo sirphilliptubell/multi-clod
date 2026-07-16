@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MultiClod.App.Persistence;
 
@@ -14,6 +15,9 @@ public sealed class AppSettingsStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        // Otherwise ClaudePermissionMode round-trips as a bare int in settings.json - unreadable
+        // to a user poking at the file, and silent about which mode 0/1/2/3 even mean.
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
     private readonly string filePath;
