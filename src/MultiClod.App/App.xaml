@@ -9,6 +9,10 @@
                 <!-- Default styles (headings, code blocks, etc.) for FlowDocuments produced by
                      Markdig.Wpf.Markdown.ToFlowDocument - see Skills\SkillDetailView.xaml.cs. -->
                 <ResourceDictionary Source="pack://application:,,,/Markdig.Wpf;component/Themes/generic.xaml" />
+
+                <!-- Merged at the app level (not just locally in TranscriptViewerControl) so this
+                     category styling is available to any future consumer - see SessionLog\Rendering. -->
+                <ResourceDictionary Source="SessionLog/Rendering/TranscriptCategoryStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

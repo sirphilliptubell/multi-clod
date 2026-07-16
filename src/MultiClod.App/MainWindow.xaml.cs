@@ -16,6 +16,7 @@ using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
+using MultiClod.App.SessionLog;
 using MultiClod.App.Skills;
 using MultiClod.App.Updates;
 using MultiClod.App.Validation;
@@ -40,6 +41,7 @@ public partial class MainWindow : Window
     private readonly ClaudeSessionHooksInstaller hooksInstaller;
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
+    private readonly SessionLogWindowRegistry sessionLogWindows = new();
 
     // Title as set by the ctor (includes the "(Debug)" suffix), before any update-status suffix -
     // see OnUpdateStatusChanged. Captured once rather than stripping a suffix back off later.
@@ -760,6 +762,11 @@ public partial class MainWindow : Window
                 var metadataMenu = new MenuItem { Header = "Metadata" };
                 metadataMenu.Items.Add(CreateMenuItem($"Explore to {session.WorkingDirectory}", () => OpenFolder(session.WorkingDirectory)));
                 metadataMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
+
+                // No enabled: guard - must work even before the session has ever been launched
+                // (the window opens in a "waiting for session to start..." state and switches to
+                // live view once the transcript file appears).
+                metadataMenu.Items.Add(CreateMenuItem("View Session Log", () => this.sessionLogWindows.ShowOrFocus(session, this)));
                 this.TreeContextMenu.Items.Add(metadataMenu);
 
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(session), inputGestureText: "Shift+Del"));
@@ -885,6 +892,10 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        // The app has no explicit ShutdownMode, so it defaults to OnLastWindowClose - a session
+        // log window left open would otherwise keep the process alive after this window closes.
+        this.sessionLogWindows.CloseAll();
+
         this.shiftDeleteHook.Dispose();
         this.arrowKeyRoutingHook.Dispose();
 
