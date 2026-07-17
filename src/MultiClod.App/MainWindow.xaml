@@ -21,11 +21,24 @@
     -->
     <Window.Resources>
         <HierarchicalDataTemplate DataType="{x:Type local:ProjectNodeViewModel}" ItemsSource="{Binding Children}">
-            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="2" />
+            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="2"
+                       TextTrimming="CharacterEllipsis" />
         </HierarchicalDataTemplate>
         <HierarchicalDataTemplate DataType="{x:Type local:SessionNodeViewModel}" ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal" Margin="2" ToolTip="{Binding ToolTipText}">
-                <Grid Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+            <!--
+                A Grid, not a StackPanel: the name column below is "*" so it actually shrinks as
+                the tree panel narrows, which is what lets SessionNameText's TextTrimming kick in.
+                A horizontal StackPanel measures children at infinite width, so a TextBlock inside
+                one never trims - it just grows past the row's bounds. See the TreeViewItem
+                ControlTemplate's own column swap (name "*" / cost Auto) below for the other half
+                of this fix.
+            -->
+            <Grid Margin="2" ToolTip="{Binding ToolTipText}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
                     <!-- IsHollow (NotStarted/Exited/Dormant) swaps Fill for Transparent below, leaving just the Stroke outline. -->
                     <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{Binding StatusBrush}"
                              Stroke="{Binding StatusBrush}" StrokeThickness="1.5" />
@@ -60,8 +73,10 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                 </Grid>
-                <TextBlock x:Name="SessionNameText" Text="{Binding Name}" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
-            </StackPanel>
+                <TextBlock x:Name="SessionNameText" Grid.Column="1" Text="{Binding Name}"
+                           Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+            </Grid>
             <HierarchicalDataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsInvalid}" Value="True">
                     <Setter TargetName="SessionNameText" Property="TextDecorations" Value="Strikethrough" />
@@ -149,8 +164,8 @@
                         <Grid Background="Transparent">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition MinWidth="19" Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -198,19 +213,19 @@
                             </Border>
                             <!--
                                 Deliberately a sibling of Bd (the selection-highlighted header
-                                border above), not inside it - Bd/Column 1 stays Auto-width so
-                                selecting a row only highlights the dot+name+cost content, exactly
-                                as before. This control alone lives in Column 2 ("*" width, empty
-                                at Row 0 until now), which stretches to the Tree control's actual
-                                right edge (it has HorizontalScrollBarVisibility="Disabled", so
-                                there's no extra scrollable width beyond that) - giving a
-                                right-aligned cost badge flush against the GridSplitter without
-                                changing selection behavior. The TreeViewItem's own DataContext is
-                                whatever node is bound (project or session), which is why
-                                CostBadgeText has a safe always-null default on the shared
-                                TreeNodeViewModel base - a project row binds harmlessly.
+                                border above), not inside it - Column 1 (Bd/name) is "*" so it
+                                shrinks as the tree panel narrows (its TextBlock then trims via
+                                TextTrimming), while this badge lives in Column 2, which is Auto so
+                                it always renders at its full natural size and stays flush against
+                                the GridSplitter regardless of how long the name is - a long name
+                                trims away rather than pushing the cost off the visible edge. The
+                                TreeViewItem's own DataContext is whatever node is bound (project or
+                                session), which is why CostBadgeText has a safe always-null default
+                                on the shared TreeNodeViewModel base - a project row binds
+                                harmlessly.
                             -->
                             <costs:CostBadge Grid.Row="0" Grid.Column="2" CostText="{Binding CostBadgeText}"
+                                              BreakdownText="{Binding CostBreakdownText}"
                                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ItemsPresenter x:Name="ItemsHost" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1" />
                         </Grid>
@@ -267,7 +282,7 @@
                 </Grid>
                 <TextBlock Text="{Binding DisplayTitle}" Foreground="White" VerticalAlignment="Center"
                            MaxWidth="160" TextTrimming="CharacterEllipsis" />
-                <costs:CostBadge CostText="{Binding CostBadgeText}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                <costs:CostBadge CostText="{Binding CostBadgeText}" BreakdownText="{Binding CostBreakdownText}" VerticalAlignment="Center" Margin="6,0,0,0" />
                 <Button Content="&#10005;" Width="16" Height="16" Margin="8,0,0,0" Padding="0"
                         Background="Transparent" BorderThickness="0" Foreground="Gray" Cursor="Hand"
                         VerticalAlignment="Center" Click="OnCloseTabClick" ToolTip="Close tab" />
