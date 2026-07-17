@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using Microsoft.Win32;
+using MultiClod.App.Extensions;
 using MultiClod.App.Git;
 using MultiClod.App.Native;
 
@@ -28,6 +29,12 @@ public partial class AddSessionDialog : Window
     // auto-name-from-folder behavior) without ever overwriting something the user actually typed.
     private bool nameIsAutoFilled = true;
     private bool suppressNameTextChanged;
+
+    // Mirrors nameIsAutoFilled/suppressNameTextChanged for WorktreeNameBox: true until the user
+    // types into it themselves, so it can keep tracking a slugified version of NameBox without
+    // ever overwriting something the user actually typed there.
+    private bool worktreeNameIsAutoFilled = true;
+    private bool suppressWorktreeNameTextChanged;
 
     // Applies useWorktreeByDefault only the first time a git repo is ever detected in this dialog
     // (typically the initial folder) - once the user has seen and possibly changed the checkbox,
@@ -61,7 +68,11 @@ public partial class AddSessionDialog : Window
         this.useWorktreeByDefault = useWorktreeByDefault;
         this.SetFolder(defaultFolder);
 
-        this.Loaded += (_, _) => this.NameBox.Focus();
+        this.Loaded += (_, _) =>
+        {
+            this.NameBox.Focus();
+            this.NameBox.SelectAll();
+        };
     }
 
     public string SessionName { get; private set; } = string.Empty;
@@ -216,6 +227,34 @@ public partial class AddSessionDialog : Window
         }
 
         this.nameIsAutoFilled = false;
+        this.UpdateWorktreeNameFromSessionName();
+    }
+
+    /// <summary>
+    /// Keeps WorktreeNameBox tracking a slugified version of the session name (e.g. "Do a
+    /// Thing!" -> "do-a-thing") until the user edits WorktreeNameBox directly - mirrors how
+    /// SetFolder keeps NameBox tracking the folder name.
+    /// </summary>
+    private void UpdateWorktreeNameFromSessionName()
+    {
+        if (!this.worktreeNameIsAutoFilled)
+        {
+            return;
+        }
+
+        this.suppressWorktreeNameTextChanged = true;
+        this.WorktreeNameBox.Text = this.NameBox.Text.Slugify();
+        this.suppressWorktreeNameTextChanged = false;
+    }
+
+    private void OnWorktreeNameTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (this.suppressWorktreeNameTextChanged)
+        {
+            return;
+        }
+
+        this.worktreeNameIsAutoFilled = false;
     }
 
     private void OnBrowseFolderClick(object sender, RoutedEventArgs e)
@@ -241,6 +280,15 @@ public partial class AddSessionDialog : Window
         var isChecked = this.WorktreeCheckBox.IsChecked == true;
         this.WorktreeControls.Visibility = isChecked ? Visibility.Visible : Visibility.Collapsed;
         this.ResizeToContent();
+
+        // Jumps straight to the field the user almost always wants to touch next - with its
+        // auto-filled slug preselected so typing replaces it outright instead of requiring a
+        // manual select-all first.
+        if (isChecked)
+        {
+            this.WorktreeNameBox.Focus();
+            this.WorktreeNameBox.SelectAll();
+        }
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e)
