@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using Microsoft.Win32;
 using MultiClod.App.Git;
 using MultiClod.App.Native;
@@ -35,6 +38,20 @@ public partial class AddSessionDialog : Window
     // Set by UpdateWorktreeSection whenever FolderBox points at a real git repo, null otherwise -
     // reused by OnAddClick so it doesn't need to re-resolve the same repo root a second time.
     private string? currentRepoRoot;
+
+    // Backs BranchCombo's ItemsSource (via a CollectionView, so typing can filter without
+    // re-querying git) and lets OnAddClick recognize a fully-typed branch name that was never
+    // formally "selected" from the dropdown.
+    private readonly List<string> allBranches = [];
+
+    // The current BranchCombo filter text, applied by FilterBranch. Kept separate from
+    // BranchCombo.Text so it can be reset without fighting the TextChanged handler below.
+    private string branchFilterText = string.Empty;
+
+    // True while code is programmatically assigning BranchCombo.SelectedItem/Text (e.g. picking
+    // the default branch in RefreshBranches) - suppresses OnBranchComboTextChanged so that
+    // assignment doesn't re-filter the list down to just the newly selected item.
+    private bool suppressBranchTextChanged;
 
     public AddSessionDialog(string defaultFolder, bool useWorktreeByDefault)
     {
@@ -89,7 +106,8 @@ public partial class AddSessionDialog : Window
         else
         {
             this.WorktreeCheckBox.IsChecked = false;
-            this.BranchCombo.Items.Clear();
+            this.allBranches.Clear();
+            this.BranchCombo.ItemsSource = null;
         }
 
         this.ResizeToContent();
@@ -115,29 +133,73 @@ public partial class AddSessionDialog : Window
     /// </summary>
     private void RefreshBranches(string repoRoot)
     {
-        this.BranchCombo.Items.Clear();
-
         var localBranches = GitRepository.GetLocalBranches(repoRoot);
         var remoteOnlyBranches = GitRepository.GetRemoteBranches(repoRoot)
             .Where(remoteBranch => !localBranches.Contains(RemoteBranchShortName(remoteBranch)));
 
         var branches = localBranches.Concat(remoteOnlyBranches).ToList();
 
-        foreach (var branch in branches)
-        {
-            this.BranchCombo.Items.Add(branch);
-        }
-
         var defaultBranch = GitRepository.GetDefaultRemoteBranch(repoRoot);
         var defaultLocalBranch = defaultBranch is not null ? RemoteBranchShortName(defaultBranch) : null;
 
         // Prefers the local form of the default branch when both exist (it's the one actually
-        // left in the list after the remote-branch filter above), then falls back to the remote
-        // form (a local branch was never created for it) or just the first available branch.
-        this.BranchCombo.SelectedItem =
+        // left in `branches` after the remote-branch filter above), then falls back to the remote
+        // form (a local branch was never created for it).
+        var pinnedBranch =
             defaultLocalBranch is not null && branches.Contains(defaultLocalBranch) ? defaultLocalBranch :
             defaultBranch is not null && branches.Contains(defaultBranch) ? defaultBranch :
-            branches.FirstOrDefault();
+            null;
+
+        // Pins the repo's default branch to the top of the list - the most likely branch to base
+        // a new worktree on - with everything else alphabetical rather than the git-order jumble
+        // of local-then-remote branches.
+        var rest = branches.Where(branch => branch != pinnedBranch).OrderBy(branch => branch, StringComparer.OrdinalIgnoreCase);
+
+        this.allBranches.Clear();
+        if (pinnedBranch is not null)
+        {
+            this.allBranches.Add(pinnedBranch);
+        }
+
+        this.allBranches.AddRange(rest);
+
+        this.branchFilterText = string.Empty;
+        var view = CollectionViewSource.GetDefaultView(this.allBranches);
+        view.Filter = this.FilterBranch;
+        this.BranchCombo.ItemsSource = view;
+
+        // No branch is pre-selected/pre-filled - the user picks or types one deliberately.
+        this.suppressBranchTextChanged = true;
+        this.BranchCombo.SelectedItem = null;
+        this.BranchCombo.Text = string.Empty;
+        this.suppressBranchTextChanged = false;
+    }
+
+    private bool FilterBranch(object item)
+    {
+        return this.branchFilterText.Length == 0
+            || (item is string branch && branch.Contains(this.branchFilterText, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Makes BranchCombo searchable: since IsTextSearchEnabled is off (its built-in search only
+    /// jumps to a matching item rather than filtering the list), typing here re-runs FilterBranch
+    /// over the full branch list and drops the dropdown open so the narrowed results are visible.
+    /// </summary>
+    private void OnBranchComboTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (this.suppressBranchTextChanged)
+        {
+            return;
+        }
+
+        this.branchFilterText = this.BranchCombo.Text;
+        (this.BranchCombo.ItemsSource as ICollectionView)?.Refresh();
+
+        if (this.branchFilterText.Length > 0)
+        {
+            this.BranchCombo.IsDropDownOpen = true;
+        }
     }
 
     private static string RemoteBranchShortName(string remoteBranch)
@@ -177,8 +239,8 @@ public partial class AddSessionDialog : Window
     private void OnWorktreeCheckedChanged(object sender, RoutedEventArgs e)
     {
         var isChecked = this.WorktreeCheckBox.IsChecked == true;
-        this.WorktreeNameBox.IsEnabled = isChecked;
-        this.BranchCombo.IsEnabled = isChecked;
+        this.WorktreeControls.Visibility = isChecked ? Visibility.Visible : Visibility.Collapsed;
+        this.ResizeToContent();
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e)
@@ -208,7 +270,11 @@ public partial class AddSessionDialog : Window
                 return;
             }
 
-            if (this.BranchCombo.SelectedItem is not string baseBranch)
+            // BranchCombo is editable so a user can search-and-type instead of picking with the
+            // mouse; SelectedItem is only null-safe if git commits (via Enter/arrow keys), so a
+            // fully-typed exact match is accepted too rather than forcing an explicit pick.
+            var baseBranch = this.BranchCombo.SelectedItem as string ?? this.BranchCombo.Text.Trim();
+            if (!this.allBranches.Contains(baseBranch))
             {
                 this.ShowError("Choose a branch to create the worktree from.");
                 return;

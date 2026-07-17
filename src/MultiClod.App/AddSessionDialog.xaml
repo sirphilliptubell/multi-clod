@@ -87,6 +87,18 @@
                                               TextElement.Foreground="{TemplateBinding Foreground}"
                                               Margin="{TemplateBinding Padding}"
                                               HorizontalAlignment="Left" VerticalAlignment="Center" />
+                            <!-- Only rendered when IsEditable (see the trigger below) - required for
+                                 typing/searching to work at all: WPF's editable ComboBox looks for a
+                                 part named exactly PART_EditableTextBox in the template and silently
+                                 falls back to non-editable behavior if it's missing. Right margin
+                                 clears the 24px arrow column so typed text can't render under it. -->
+                            <TextBox x:Name="PART_EditableTextBox" Visibility="Hidden"
+                                     Background="Transparent" BorderThickness="0"
+                                     Foreground="{TemplateBinding Foreground}"
+                                     CaretBrush="{TemplateBinding Foreground}"
+                                     Margin="8,6,28,6" Padding="0"
+                                     HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                     IsReadOnly="{TemplateBinding IsReadOnly}" />
                             <Popup x:Name="Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                                    PopupAnimation="Slide" IsOpen="{TemplateBinding IsDropDownOpen}">
                                 <Border Background="{DynamicResource Theme.Brush.ControlBackground}" BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="1"
@@ -97,6 +109,12 @@
                                 </Border>
                             </Popup>
                         </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -129,11 +147,19 @@
             <CheckBox x:Name="WorktreeCheckBox" Content="Create a git worktree for this session"
                       Margin="0,18,0,0" Checked="OnWorktreeCheckedChanged" Unchecked="OnWorktreeCheckedChanged" />
 
-            <TextBlock Text="Worktree name (new branch)" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
-            <TextBox x:Name="WorktreeNameBox" IsEnabled="False" />
+            <!-- Hidden rather than just disabled while WorktreeCheckBox is unchecked - see
+                 OnWorktreeCheckedChanged. -->
+            <StackPanel x:Name="WorktreeControls" Visibility="Collapsed">
+                <TextBlock Text="Worktree name (new branch)" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
+                <TextBox x:Name="WorktreeNameBox" />
 
-            <TextBlock Text="Branch to create it from" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
-            <ComboBox x:Name="BranchCombo" IsEnabled="False" />
+                <TextBlock Text="Branch to create it from" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
+                <!-- IsEditable + a custom filter (OnBranchComboTextChanged/FilterBranch in the code-behind)
+                     make this searchable: WPF's built-in IsTextSearchEnabled only jumps to the first
+                     matching item rather than narrowing the list, so it's turned off in favor of that. -->
+                <ComboBox x:Name="BranchCombo" IsEditable="True" IsTextSearchEnabled="False"
+                          TextBoxBase.TextChanged="OnBranchComboTextChanged" />
+            </StackPanel>
         </StackPanel>
 
         <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Theme.Brush.Error}" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />

@@ -40,13 +40,11 @@ public sealed class WpfTerminalPane : ITerminalPane
 
     private const double TitleBarHeight = 26;
     private static readonly Brush DefaultTitleBarBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-    private static readonly Brush CloseButtonHoverBackground = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
 
     private readonly Grid container;
     private readonly Grid titleBar;
     private readonly TerminalControl control;
     private readonly TextBlock titleText;
-    private readonly Border closeButton;
     private WpfTerminalConnectionAdapter? adapter;
     private TerminalPaneTheme? lastTheme;
     private bool disposed;
@@ -77,39 +75,8 @@ public sealed class WpfTerminalPane : ITerminalPane
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
 
-        this.closeButton = new Border
-        {
-            Width = 30,
-            Background = Brushes.Transparent,
-            Cursor = Cursors.Hand,
-            Child = new TextBlock
-            {
-                Text = "✕",
-                Foreground = Brushes.White,
-                FontSize = 11,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            },
-        };
-
-        // A plain Border+TextBlock instead of a real Button - WPF's default Button chrome has its
-        // own IsMouseOver visual trigger that would need a full ControlTemplate override to get a
-        // custom hover color, which is overkill for a single glyph.
-        this.closeButton.MouseEnter += (_, _) => this.closeButton.Background = CloseButtonHoverBackground;
-        this.closeButton.MouseLeave += (_, _) => this.closeButton.Background = Brushes.Transparent;
-        this.closeButton.MouseLeftButtonUp += (_, e) =>
-        {
-            e.Handled = true;
-            this.CloseRequested?.Invoke(this, EventArgs.Empty);
-        };
-
         this.titleBar = new Grid { Background = DefaultTitleBarBackground, Height = TitleBarHeight };
-        this.titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        this.titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(this.titleText, 0);
-        Grid.SetColumn(this.closeButton, 1);
         this.titleBar.Children.Add(this.titleText);
-        this.titleBar.Children.Add(this.closeButton);
 
         this.container = new Grid();
         this.container.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -142,8 +109,6 @@ public sealed class WpfTerminalPane : ITerminalPane
         get => this.control.NewlineOnShiftEnter;
         set => this.control.NewlineOnShiftEnter = value;
     }
-
-    public event EventHandler? CloseRequested;
 
     public void Attach(IPtyConnection connection)
     {

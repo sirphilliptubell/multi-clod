@@ -25,8 +25,6 @@ public interface ISessionHost : IDisposable
 
     event EventHandler<SessionState> StateChanged;
 
-    event EventHandler? CloseRequested;
-
     event EventHandler<string> TitleChanged;
 
     void Start(TerminalLaunchOptions options);
