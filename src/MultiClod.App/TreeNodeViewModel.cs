@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using MultiClod.App.Costs;
 
 namespace MultiClod.App;
 
@@ -46,6 +47,16 @@ public abstract class TreeNodeViewModel : INotifyPropertyChanged
         get => this.isExpanded;
         set => this.SetField(ref this.isExpanded, value);
     }
+
+    // Defaults to "no cost data at all" for every node type, including ProjectNodeViewModel - the
+    // shared TreeViewItem ControlTemplate binds a CostBadge control's CostText against whatever
+    // node is bound (project or session), so a project row needs a safe, always-null answer rather
+    // than a binding error. SessionNodeViewModel is the only node type that ever overrides this
+    // with real backing state (see its UpdateCostSummary). A null/empty CostBadgeText is itself
+    // enough for CostBadge to hide - no separate Has* flag needed.
+    internal virtual SessionCostSummary CostSummary => SessionCostSummary.NoData;
+
+    public virtual string? CostBadgeText => SessionCostAggregator.FormatBadge(this.CostSummary);
 
     protected void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {

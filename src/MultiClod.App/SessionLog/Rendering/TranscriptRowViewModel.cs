@@ -13,6 +13,7 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
 {
     private bool isExpanded;
     private bool isSourceExpanded;
+    private LineCostDisplay lineCost = LineCostDisplay.None;
 
     protected TranscriptRowViewModel(TranscriptRowCategory category, DateTimeOffset? timestamp)
     {
@@ -48,6 +49,17 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
     {
         get => this.isSourceExpanded;
         set => this.SetField(ref this.isSourceExpanded, value);
+    }
+
+    public string? LineCostText => this.lineCost.ToDisplayText();
+
+    // Set at most once, by TranscriptRowFactory, immediately after this row is constructed - never
+    // touched by a subclass's own later mutation (e.g. ToolCallRowViewModel.ApplyToolResult belongs
+    // to a *different* transcript line's tool_result and must never overwrite this row's own cost).
+    internal void AssignLineCost(LineCostDisplay cost)
+    {
+        this.lineCost = cost;
+        this.RaisePropertyChanged(nameof(this.LineCostText));
     }
 
     // Called by a subclass after mutating the fields its Summary/ExpandedBody/Copyable getters

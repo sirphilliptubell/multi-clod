@@ -158,7 +158,15 @@
                 <ComboBoxItem Tag="BypassPermissions" Content="Bypass permissions (no prompts at all)" />
             </ComboBox>
             <TextBlock Text="Which mode a brand-new session's claude process starts in (same modes Shift+Tab cycles through inside a session). Only applies to sessions launched after this is changed."
-                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,16" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ToggleButton x:Name="ShowCostsToggle" Style="{StaticResource ToggleSwitchStyle}"
+                              Click="OnShowCostsToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="Show estimated costs" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="Shows estimated Claude API cost next to session names, in the Session Log window, and per transcript entry."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
         </StackPanel>
     </Grid>
 </UserControl>

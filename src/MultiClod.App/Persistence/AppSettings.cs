@@ -43,4 +43,12 @@ public sealed record AppSettings
     /// safest-by-default behavior for a session nothing has configured yet.
     /// </summary>
     public ClaudePermissionMode DefaultPermissionMode { get; init; }
+
+    /// <summary>
+    /// Shows estimated Claude API cost badges next to session names (tree/tabs), in the Session Log
+    /// window, and per transcript row - see Costs\CostDisplaySettings, the app-wide live-bindable
+    /// flag this is pushed into. Defaults to true (on), unlike this file's other booleans, since
+    /// cost visibility is the feature's whole point rather than an opt-in convenience.
+    /// </summary>
+    public bool ShowCosts { get; init; } = true;
 }

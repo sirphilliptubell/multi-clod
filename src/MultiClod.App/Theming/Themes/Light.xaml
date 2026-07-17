@@ -24,6 +24,9 @@
     <Color x:Key="Theme.Color.ToggleTrackOff">#B5B5B5</Color>
     <Color x:Key="Theme.Color.Error">#FF4500</Color>
     <Color x:Key="Theme.Color.MarkdownForeground">#1E1E1E</Color>
+    <!-- Darker than Dark/DarkLowContrast's gold (#D4AF37) - that value reads poorly against a white
+         background, so Light uses a deeper "goldenrod" tone with better contrast instead. -->
+    <Color x:Key="Theme.Color.Cost">#8B6508</Color>
 
     <SolidColorBrush x:Key="Theme.Brush.WindowBackground" Color="{StaticResource Theme.Color.WindowBackground}" />
     <SolidColorBrush x:Key="Theme.Brush.RailBackground" Color="{StaticResource Theme.Color.RailBackground}" />
@@ -41,5 +44,6 @@
     <SolidColorBrush x:Key="Theme.Brush.ToggleTrackOff" Color="{StaticResource Theme.Color.ToggleTrackOff}" />
     <SolidColorBrush x:Key="Theme.Brush.Error" Color="{StaticResource Theme.Color.Error}" />
     <SolidColorBrush x:Key="Theme.Brush.MarkdownForeground" Color="{StaticResource Theme.Color.MarkdownForeground}" />
+    <SolidColorBrush x:Key="Theme.Brush.Cost" Color="{StaticResource Theme.Color.Cost}" />
 
 </ResourceDictionary>

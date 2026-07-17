@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows.Media;
+using MultiClod.App.Costs;
 using MultiClod.App.Validation;
 using MultiClod.Terminal.Abstractions;
 
@@ -21,6 +22,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
     private SessionValidationProblem validationProblem;
     private string? detectedTitle;
     private Guid claudeSessionId;
+    private SessionCostSummary costSummary = SessionCostSummary.NoData;
 
     public SessionNodeViewModel(Guid id, Guid claudeSessionId, string name, string workingDirectory, bool hasBeenStarted, string? detectedTitle = null)
         : base(name)
@@ -126,6 +128,19 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
 
             return this.liveSession is { } session ? $"{basePath} ({session.StatusText})" : basePath;
         }
+    }
+
+    // Real backing state overriding TreeNodeViewModel's always-NoData default - CostBadgeText is
+    // inherited as-is from the base class, since it already reads through this (virtual) property
+    // polymorphically. Only SessionCostMonitorService ever calls UpdateCostSummary, already
+    // marshaled to the UI thread, so no additional dispatcher handling is needed here.
+    internal override SessionCostSummary CostSummary => this.costSummary;
+
+    internal void UpdateCostSummary(SessionCostSummary summary)
+    {
+        this.costSummary = summary;
+        this.RaisePropertyChanged(nameof(this.CostSummary));
+        this.RaisePropertyChanged(nameof(this.CostBadgeText));
     }
 
     public void AttachLiveSession(TerminalSession session)

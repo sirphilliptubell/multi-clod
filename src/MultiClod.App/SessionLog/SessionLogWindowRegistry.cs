@@ -1,4 +1,5 @@
 using System.Windows;
+using MultiClod.App.Costs;
 
 namespace MultiClod.App.SessionLog;
 
@@ -12,7 +13,7 @@ public sealed class SessionLogWindowRegistry
 {
     private readonly Dictionary<Guid, SessionLogWindow> openWindows = new();
 
-    public void ShowOrFocus(SessionNodeViewModel session, Window owner)
+    public void ShowOrFocus(SessionNodeViewModel session, Window owner, SessionCostMonitorService costMonitor)
     {
         if (this.openWindows.TryGetValue(session.Id, out var existing))
         {
@@ -25,7 +26,7 @@ public sealed class SessionLogWindowRegistry
             return;
         }
 
-        var window = new SessionLogWindow(session) { Owner = owner };
+        var window = new SessionLogWindow(session, costMonitor) { Owner = owner };
         window.Closed += (_, _) => this.openWindows.Remove(session.Id);
         this.openWindows[session.Id] = window;
         window.Show();

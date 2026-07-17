@@ -12,6 +12,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using MultiClod.App.Costs;
 using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
 using MultiClod.App.Native;
@@ -37,6 +38,12 @@ public partial class MainWindow : Window
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
     private readonly SessionLogWindowRegistry sessionLogWindows = new();
+
+    // Owns every started session's FileSystemWatcher-driven cost tracking - see
+    // SessionCostMonitorService's remarks for why this is centralized rather than per-session.
+    // Scoped to this window's lifetime, same as sessionLogWindows above, since only MainWindow has
+    // the SessionTreeController reference it needs to enumerate started sessions.
+    private readonly SessionCostMonitorService costMonitor = new();
 
     // Sessions currently open as tabs in the main panel, in tab-strip order - see OpenTab/CloseTab.
     // Bound to TabStrip.ItemsSource in the ctor. Decoupled from Tree.SelectedItem: selecting a
@@ -117,6 +124,15 @@ public partial class MainWindow : Window
         this.controller.Load();
         this.Tree.ItemsSource = this.controller.RootNodes;
 
+        // Eager, not lazy-on-scroll: every already-started session gets its cost computed as soon
+        // as the tree loads, not just whichever ones happen to be scrolled into view. Cheap in the
+        // common case - a session whose .mc.json sidecar mtime still matches its jsonl only costs a
+        // stat call, not a reparse.
+        foreach (var startedSession in this.controller.AllSessionNodes().Where(session => session.HasBeenStarted))
+        {
+            this.costMonitor.RegisterSession(startedSession);
+        }
+
         this.TabStrip.ItemsSource = this.openTabs;
 
         this.layoutStore = new WindowLayoutStore();
@@ -132,6 +148,11 @@ public partial class MainWindow : Window
         this.SettingsView.UseWorktreeByDefaultChanged += this.OnUseWorktreeByDefaultChanged;
         this.SettingsView.DefaultPermissionModeChanged += this.OnDefaultPermissionModeChanged;
         this.SettingsView.ThemeChanged += this.OnThemeChanged;
+        this.SettingsView.ShowCostsChanged += this.OnShowCostsChanged;
+
+        // Seeds the live-bindable flag every cost badge across the app reads from - see
+        // CostDisplaySettings' remarks. Every later toggle flows through OnShowCostsChanged instead.
+        CostDisplaySettings.Instance.ShowCosts = this.appSettings.ShowCosts;
 
         // Best-effort - see ClaudeSessionHooksInstaller.SettingsFilePath, which LaunchSession
         // checks before appending --settings, so a failed write here just forgoes activity icons.
@@ -313,6 +334,7 @@ public partial class MainWindow : Window
 
         node.HasBeenStarted = true;
         this.controller.ScheduleSave();
+        this.costMonitor.RegisterSession(node);
     }
 
     private void StopSession(SessionNodeViewModel node)
@@ -604,6 +626,17 @@ public partial class MainWindow : Window
     {
         this.appSettings = this.appSettings with { DefaultPermissionMode = defaultPermissionMode };
         this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnShowCostsChanged(object? sender, bool showCosts)
+    {
+        this.appSettings = this.appSettings with { ShowCosts = showCosts };
+        this.settingsStore.Save(this.appSettings);
+
+        // Every cost badge across the tree, tabs, and any open Session Log window is bound to this
+        // one flag (via CostVisibilityConverter) - setting it here is the entire live-push, no
+        // per-session/per-window loop needed like OnUseShiftEnterForNewlineChanged's.
+        CostDisplaySettings.Instance.ShowCosts = showCosts;
     }
 
     private void OnThemeChanged(object? sender, AppTheme theme)
@@ -999,7 +1032,7 @@ public partial class MainWindow : Window
                 // No enabled: guard - must work even before the session has ever been launched
                 // (the window opens in a "waiting for session to start..." state and switches to
                 // live view once the transcript file appears).
-                metadataMenu.Items.Add(CreateMenuItem("View Session Log", () => this.sessionLogWindows.ShowOrFocus(session, this)));
+                metadataMenu.Items.Add(CreateMenuItem("View Session Log", () => this.sessionLogWindows.ShowOrFocus(session, this, this.costMonitor)));
                 this.TreeContextMenu.Items.Add(metadataMenu);
 
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(session), inputGestureText: "Shift+Del"));
@@ -1056,7 +1089,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        this.controller.ImportSession(parent, result.SummaryOrSessionId, result.WorkingDirectory, result.ParentSessionId);
+        var imported = this.controller.ImportSession(parent, result.SummaryOrSessionId, result.WorkingDirectory, result.ParentSessionId);
+        this.costMonitor.RegisterSession(imported);
     }
 
     private void OnRename(TreeNodeViewModel node)
@@ -1091,6 +1125,12 @@ public partial class MainWindow : Window
         if (!this.controller.TryDelete(node, out var error))
         {
             MessageBox.Show(this, error, "Cannot delete", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (node is SessionNodeViewModel deletedSession)
+        {
+            this.costMonitor.UnregisterSession(deletedSession);
         }
     }
 
@@ -1099,6 +1139,7 @@ public partial class MainWindow : Window
         // The app has no explicit ShutdownMode, so it defaults to OnLastWindowClose - a session
         // log window left open would otherwise keep the process alive after this window closes.
         this.sessionLogWindows.CloseAll();
+        this.costMonitor.Dispose();
 
         this.shiftDeleteHook.Dispose();
         this.arrowKeyRoutingHook.Dispose();

@@ -53,12 +53,19 @@ public partial class SettingsView : UserControl
     /// </summary>
     internal event EventHandler<AppTheme>? ThemeChanged;
 
+    /// <summary>
+    /// Raised only in response to the user actually flipping the toggle - MainWindow persists it
+    /// and pushes it live into Costs\CostDisplaySettings.Instance.
+    /// </summary>
+    internal event EventHandler<bool>? ShowCostsChanged;
+
     internal void LoadSettings(AppSettings settings)
     {
         this.suppressChangeEvents = true;
         this.ShiftEnterToggle.IsChecked = settings.UseShiftEnterForNewline;
         this.DefaultRootFolderBox.Text = settings.DefaultRootFolder ?? string.Empty;
         this.WorktreeToggle.IsChecked = settings.UseWorktreeByDefault;
+        this.ShowCostsToggle.IsChecked = settings.ShowCosts;
 
         this.PermissionModeCombo.SelectedIndex = settings.DefaultPermissionMode switch
         {
@@ -110,6 +117,16 @@ public partial class SettingsView : UserControl
         }
 
         this.UseWorktreeByDefaultChanged?.Invoke(this, this.WorktreeToggle.IsChecked == true);
+    }
+
+    private void OnShowCostsToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (this.suppressChangeEvents)
+        {
+            return;
+        }
+
+        this.ShowCostsChanged?.Invoke(this, this.ShowCostsToggle.IsChecked == true);
     }
 
     private void OnPermissionModeSelectionChanged(object sender, SelectionChangedEventArgs e)

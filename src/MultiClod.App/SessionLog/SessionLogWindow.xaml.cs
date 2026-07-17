@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using MultiClod.App.Costs;
 using MultiClod.App.Validation;
 
 namespace MultiClod.App.SessionLog;
@@ -18,25 +19,69 @@ namespace MultiClod.App.SessionLog;
 public partial class SessionLogWindow : Window
 {
     private readonly SessionNodeViewModel session;
+    private readonly SessionCostMonitorService costMonitor;
     private readonly ObservableCollection<SessionLogSourceViewModel> subagents = new();
+    private SessionLogSourceViewModel mainSessionSource;
     private SubagentTranscriptWatcher? subagentWatcher;
     private string mainSessionFilePath;
     private bool isMainSessionSelected = true;
 
-    public SessionLogWindow(SessionNodeViewModel session)
+    public SessionLogWindow(SessionNodeViewModel session, SessionCostMonitorService costMonitor)
     {
         this.InitializeComponent();
 
         this.session = session;
+        this.costMonitor = costMonitor;
         this.Title = $"Session Log - {session.DisplayTitle}";
         this.mainSessionFilePath = ClaudeProjectPath.GetSessionFilePath(session.WorkingDirectory, session.ClaudeSessionId);
+        this.mainSessionSource = this.CreateMainSessionSource();
+        this.MainSessionHeaderPanel.DataContext = this.mainSessionSource;
 
         this.SubagentsListBox.ItemsSource = this.subagents;
         this.session.PropertyChanged += this.OnSessionPropertyChanged;
-        this.Closed += (_, _) => this.subagentWatcher?.Dispose();
+        this.costMonitor.SubagentFileCostUpdated += this.OnSubagentFileCostUpdated;
+        this.Closed += (_, _) =>
+        {
+            this.subagentWatcher?.Dispose();
+            this.costMonitor.SubagentFileCostUpdated -= this.OnSubagentFileCostUpdated;
+        };
 
         this.StartWatchingSubagents();
         this.SelectMainSession();
+    }
+
+    // Seeded from the session node's own aggregate (already summed across main + all subagent
+    // logs by SessionCostMonitorService) - Main Session mirrors the same total shown on the tree
+    // badge, not just the main log file's own contribution.
+    private SessionLogSourceViewModel CreateMainSessionSource()
+    {
+        var source = new SessionLogSourceViewModel("Main Session", this.mainSessionFilePath, DateTime.MinValue);
+        source.UpdateCostSummary(this.session.CostSummary);
+        return source;
+    }
+
+    // A subagent file may already have been processed by the shared monitor before this window's
+    // own SubagentTranscriptWatcher discovers it - seed from whatever's on disk in its sidecar so
+    // there's no gap until the next SubagentFileCostUpdated event for that file.
+    private static SessionCostSummary ReadSidecarSummary(string jsonlPath)
+    {
+        var sidecar = SessionCostCacheFile.TryLoad(SessionCostCacheFile.SidecarPathFor(jsonlPath));
+        return sidecar is null ? SessionCostSummary.NoData : SessionCostAggregator.Aggregate([sidecar.ModelCostsUsd]);
+    }
+
+    private void OnSubagentFileCostUpdated(string filePath, SessionCostSummary summary)
+    {
+        this.Dispatcher.Invoke(() =>
+        {
+            foreach (var source in this.subagents)
+            {
+                if (string.Equals(source.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    source.UpdateCostSummary(summary);
+                    return;
+                }
+            }
+        });
     }
 
     private void StartWatchingSubagents()
@@ -56,6 +101,8 @@ public partial class SessionLogWindow : Window
     {
         this.Dispatcher.Invoke(() =>
         {
+            source.UpdateCostSummary(ReadSidecarSummary(source.FilePath));
+
             var insertIndex = 0;
             while (insertIndex < this.subagents.Count && this.subagents[insertIndex].CreatedAtUtc <= source.CreatedAtUtc)
             {
@@ -68,6 +115,12 @@ public partial class SessionLogWindow : Window
 
     private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(SessionNodeViewModel.CostSummary))
+        {
+            this.Dispatcher.Invoke(() => this.mainSessionSource.UpdateCostSummary(this.session.CostSummary));
+            return;
+        }
+
         if (e.PropertyName != nameof(SessionNodeViewModel.ClaudeSessionId))
         {
             return;
@@ -76,6 +129,12 @@ public partial class SessionLogWindow : Window
         this.Dispatcher.Invoke(() =>
         {
             this.mainSessionFilePath = ClaudeProjectPath.GetSessionFilePath(this.session.WorkingDirectory, this.session.ClaudeSessionId);
+
+            // A new underlying jsonl (e.g. after /clear) means Main Session's own FilePath is
+            // stale - recreate it rather than mutate a supposedly-immutable path in place.
+            this.mainSessionSource = this.CreateMainSessionSource();
+            this.MainSessionHeaderPanel.DataContext = this.mainSessionSource;
+
             this.StartWatchingSubagents();
 
             if (this.isMainSessionSelected)
@@ -94,7 +153,7 @@ public partial class SessionLogWindow : Window
     private void SelectMainSession()
     {
         this.isMainSessionSelected = true;
-        this.MainSessionHeader.Background = new SolidColorBrush(Color.FromRgb(0x28, 0x48, 0x61));
+        this.MainSessionHeaderPanel.Background = new SolidColorBrush(Color.FromRgb(0x28, 0x48, 0x61));
         this.Viewer.SetSource(this.mainSessionFilePath);
     }
 
@@ -106,7 +165,7 @@ public partial class SessionLogWindow : Window
         }
 
         this.isMainSessionSelected = false;
-        this.MainSessionHeader.Background = Brushes.Transparent;
+        this.MainSessionHeaderPanel.Background = Brushes.Transparent;
         this.Viewer.SetSource(source.FilePath);
     }
 }

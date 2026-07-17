@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MultiClod.App.Costs;
 using MultiClod.App.SessionLog.Parsing;
 
 namespace MultiClod.App.SessionLog.Rendering;
@@ -46,27 +47,52 @@ public sealed class TranscriptRowFactory
             return [];
         }
 
+        IReadOnlyList<TranscriptRowViewModel> rows;
         if (content.ValueKind == JsonValueKind.String)
         {
-            return [new MessageTextRowViewModel(category, lineRoot, content.GetString() ?? string.Empty)];
+            rows = [new MessageTextRowViewModel(category, lineRoot, content.GetString() ?? string.Empty)];
         }
-
-        if (content.ValueKind != JsonValueKind.Array)
+        else if (content.ValueKind != JsonValueKind.Array)
         {
-            return [];
+            rows = [];
         }
-
-        var rows = new List<TranscriptRowViewModel>();
-        foreach (var block in content.EnumerateArray())
+        else
         {
-            var row = this.ProcessContentBlock(lineRoot, category, block);
-            if (row is not null)
+            var blockRows = new List<TranscriptRowViewModel>();
+            foreach (var block in content.EnumerateArray())
             {
-                rows.Add(row);
+                var row = this.ProcessContentBlock(lineRoot, category, block);
+                if (row is not null)
+                {
+                    blockRows.Add(row);
+                }
             }
+
+            rows = blockRows;
+        }
+
+        // A line's cost (from message.usage) is a per-line fact, not a per-content-block one - it's
+        // attached to the first row this line produced (per the approved plan) rather than
+        // duplicated across every row from an assistant turn with several content blocks. A "user"
+        // category line naturally yields LineCostDisplay.None here, since only assistant lines
+        // carry message.usage - no separate category check needed.
+        if (rows.Count > 0)
+        {
+            rows[0].AssignLineCost(ComputeLineCost(lineRoot));
         }
 
         return rows;
+    }
+
+    private static LineCostDisplay ComputeLineCost(JsonElement lineRoot)
+    {
+        if (ClaudeUsageReader.TryRead(lineRoot) is not { } usageLine || usageLine.ModelSlug.Length == 0)
+        {
+            return LineCostDisplay.None;
+        }
+
+        var cost = ClaudeCostCalculator.TryComputeUsd(usageLine.ModelSlug, usageLine.Usage, usageLine.Timestamp);
+        return cost is { } amount ? LineCostDisplay.KnownAmount(amount) : LineCostDisplay.Unknown;
     }
 
     // Returns null only for a tool_result block that successfully matched and mutated an existing

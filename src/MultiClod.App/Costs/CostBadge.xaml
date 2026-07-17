@@ -1,0 +1,27 @@
+<UserControl x:Class="MultiClod.App.Costs.CostBadge"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:costs="clr-namespace:MultiClod.App.Costs"
+             x:Name="Root">
+    <UserControl.Resources>
+        <costs:CostVisibilityConverter x:Key="CostVisibilityConverter" />
+    </UserControl.Resources>
+
+    <!-- Reads CostDisplaySettings.Instance directly (via the MultiBinding below) rather than
+         requiring every caller to re-wire the ShowCosts check itself - see CostDisplaySettings'
+         remarks for why that's a live-bindable singleton instead of something plumbed through each
+         session/row view model. Foreground is the one visual choice every call site shares
+         (theme-aware gold/goldenrod - see Theming\Themes\*.xaml's Theme.Brush.Cost); positioning
+         (Grid.Row/Column, Margin, alignment) stays with each caller, since that differs per usage
+         (tree badge, tab badge, Session Log header/list, transcript row). -->
+    <TextBlock Text="{Binding CostText, ElementName=Root}"
+               Foreground="{DynamicResource Theme.Brush.Cost}"
+               FontSize="11" VerticalAlignment="Center">
+        <TextBlock.Visibility>
+            <MultiBinding Converter="{StaticResource CostVisibilityConverter}">
+                <Binding Path="CostText" ElementName="Root" />
+                <Binding Source="{x:Static costs:CostDisplaySettings.Instance}" Path="ShowCosts" />
+            </MultiBinding>
+        </TextBlock.Visibility>
+    </TextBlock>
+</UserControl>

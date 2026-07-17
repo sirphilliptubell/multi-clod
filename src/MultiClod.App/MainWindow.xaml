@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:MultiClod.App"
         xmlns:skills="clr-namespace:MultiClod.App.Skills"
         xmlns:settings="clr-namespace:MultiClod.App.Settings"
+        xmlns:costs="clr-namespace:MultiClod.App.Costs"
         xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="Multi-Clod" Height="600" Width="1000"
@@ -195,6 +196,22 @@
                                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                                    SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
                             </Border>
+                            <!--
+                                Deliberately a sibling of Bd (the selection-highlighted header
+                                border above), not inside it - Bd/Column 1 stays Auto-width so
+                                selecting a row only highlights the dot+name+cost content, exactly
+                                as before. This control alone lives in Column 2 ("*" width, empty
+                                at Row 0 until now), which stretches to the Tree control's actual
+                                right edge (it has HorizontalScrollBarVisibility="Disabled", so
+                                there's no extra scrollable width beyond that) - giving a
+                                right-aligned cost badge flush against the GridSplitter without
+                                changing selection behavior. The TreeViewItem's own DataContext is
+                                whatever node is bound (project or session), which is why
+                                CostBadgeText has a safe always-null default on the shared
+                                TreeNodeViewModel base - a project row binds harmlessly.
+                            -->
+                            <costs:CostBadge Grid.Row="0" Grid.Column="2" CostText="{Binding CostBadgeText}"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ItemsPresenter x:Name="ItemsHost" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1" />
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -250,6 +267,7 @@
                 </Grid>
                 <TextBlock Text="{Binding DisplayTitle}" Foreground="White" VerticalAlignment="Center"
                            MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                <costs:CostBadge CostText="{Binding CostBadgeText}" VerticalAlignment="Center" Margin="6,0,0,0" />
                 <Button Content="&#10005;" Width="16" Height="16" Margin="8,0,0,0" Padding="0"
                         Background="Transparent" BorderThickness="0" Foreground="Gray" Cursor="Hand"
                         VerticalAlignment="Center" Click="OnCloseTabClick" ToolTip="Close tab" />

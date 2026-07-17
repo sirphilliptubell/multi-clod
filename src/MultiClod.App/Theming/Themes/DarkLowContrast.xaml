@@ -25,6 +25,7 @@
     <Color x:Key="Theme.Color.ToggleTrackOff">#5A5A5A</Color>
     <Color x:Key="Theme.Color.Error">#FF4500</Color>
     <Color x:Key="Theme.Color.MarkdownForeground">#C8C8C8</Color>
+    <Color x:Key="Theme.Color.Cost">#D4AF37</Color>
 
     <SolidColorBrush x:Key="Theme.Brush.WindowBackground" Color="{StaticResource Theme.Color.WindowBackground}" />
     <SolidColorBrush x:Key="Theme.Brush.RailBackground" Color="{StaticResource Theme.Color.RailBackground}" />
@@ -42,5 +43,6 @@
     <SolidColorBrush x:Key="Theme.Brush.ToggleTrackOff" Color="{StaticResource Theme.Color.ToggleTrackOff}" />
     <SolidColorBrush x:Key="Theme.Brush.Error" Color="{StaticResource Theme.Color.Error}" />
     <SolidColorBrush x:Key="Theme.Brush.MarkdownForeground" Color="{StaticResource Theme.Color.MarkdownForeground}" />
+    <SolidColorBrush x:Key="Theme.Brush.Cost" Color="{StaticResource Theme.Color.Cost}" />
 
 </ResourceDictionary>
