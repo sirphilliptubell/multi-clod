@@ -259,18 +259,22 @@ public partial class MainWindow : Window
             commandLine += $" --settings \"{settingsPath}\"";
         }
 
-        // Always passed (rather than only for non-Manual modes) so this setting deterministically
-        // picks the startup mode regardless of whatever defaultMode the user's own global Claude
-        // Code settings.json might otherwise apply.
-        var permissionModeFlag = this.appSettings.DefaultPermissionMode switch
+        // Only passed on a brand-new (--session-id) launch. Claude Code itself remembers the mode
+        // a conversation was last left in (including any in-CLI Shift+Tab cycling) and restores it
+        // on --resume, so passing this again here would fight that and force every resume back to
+        // whatever Settings' DefaultPermissionMode currently says instead of leaving it alone.
+        if (!node.HasBeenStarted)
         {
-            ClaudePermissionMode.Auto => "auto",
-            ClaudePermissionMode.AcceptEdits => "acceptEdits",
-            ClaudePermissionMode.Plan => "plan",
-            ClaudePermissionMode.BypassPermissions => "bypassPermissions",
-            _ => "manual",
-        };
-        commandLine += $" --permission-mode {permissionModeFlag}";
+            var permissionModeFlag = this.appSettings.DefaultPermissionMode switch
+            {
+                ClaudePermissionMode.Auto => "auto",
+                ClaudePermissionMode.AcceptEdits => "acceptEdits",
+                ClaudePermissionMode.Plan => "plan",
+                ClaudePermissionMode.BypassPermissions => "bypassPermissions",
+                _ => "manual",
+            };
+            commandLine += $" --permission-mode {permissionModeFlag}";
+        }
 
         host.Start(new TerminalLaunchOptions { WorkingDirectory = node.WorkingDirectory, CommandLine = commandLine });
 
