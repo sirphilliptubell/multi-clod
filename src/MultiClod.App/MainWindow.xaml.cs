@@ -72,6 +72,13 @@ public partial class MainWindow : Window
 
     private enum DropPosition { Before, Into, After }
 
+    // Separate drag payload identifier from DragFormat above so a drag started on a tab is never
+    // mistaken for a tree-node drag (or vice versa) if it happens to end up over the other control.
+    private const string TabDragFormat = "MultiClod.App.TabItem";
+
+    private Point? tabDragStartPoint;
+    private SessionNodeViewModel? tabDragStartSession;
+
     // Which of Tree/SkillsList (Panel) and the corresponding canvas content is currently visible -
     // see SetRailSection.
     private RailSection currentRailSection = RailSection.Sessions;
@@ -475,6 +482,114 @@ public partial class MainWindow : Window
             // and reopens its tab instead of silently doing nothing.
             session.IsSelected = false;
         }
+    }
+
+    private void OnTabItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        this.tabDragStartPoint = e.GetPosition(null);
+        this.tabDragStartSession = (sender as ListBoxItem)?.DataContext as SessionNodeViewModel;
+    }
+
+    private void OnTabItemPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || this.tabDragStartPoint is not { } start || this.tabDragStartSession is not { } session)
+        {
+            return;
+        }
+
+        var current = e.GetPosition(null);
+        if (Math.Abs(current.X - start.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(current.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        this.tabDragStartPoint = null;
+        this.tabDragStartSession = null;
+
+        DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(TabDragFormat, session), DragDropEffects.Move);
+    }
+
+    private void OnTabItemDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+
+        if (sender is ListBoxItem item && e.Data.GetData(TabDragFormat) is SessionNodeViewModel dragged && item.DataContext is SessionNodeViewModel target &&
+            !ReferenceEquals(dragged, target))
+        {
+            e.Effects = DragDropEffects.Move;
+        }
+    }
+
+    private void OnTabItemDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+
+        if (sender is not ListBoxItem item || e.Data.GetData(TabDragFormat) is not SessionNodeViewModel dragged || item.DataContext is not SessionNodeViewModel target ||
+            ReferenceEquals(dragged, target))
+        {
+            return;
+        }
+
+        var before = GetHorizontalDropPosition(item, e.GetPosition(item)) == DropPosition.Before;
+        this.MoveTab(dragged, target, before);
+    }
+
+    private void OnTabStripDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetData(TabDragFormat) is SessionNodeViewModel ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnTabStripDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+
+        // Only reachable for a genuine past-the-last-tab drop - a drop landing on a tab is handled
+        // (and e.Handled = true is set) by that tab's own OnTabItemDrop before bubbling gets here.
+        if (e.Data.GetData(TabDragFormat) is not SessionNodeViewModel dragged)
+        {
+            return;
+        }
+
+        var oldIndex = this.openTabs.IndexOf(dragged);
+        if (oldIndex >= 0 && oldIndex != this.openTabs.Count - 1)
+        {
+            this.openTabs.Move(oldIndex, this.openTabs.Count - 1);
+        }
+    }
+
+    // Moves `dragged` next to `target` within openTabs (before or after it), preserving
+    // TabStrip.SelectedItem's identity - ObservableCollection.Move (unlike Remove+Insert) raises a
+    // single Move notification that ListBox applies without disturbing selection.
+    private void MoveTab(SessionNodeViewModel dragged, SessionNodeViewModel target, bool before)
+    {
+        var oldIndex = this.openTabs.IndexOf(dragged);
+        var targetIndex = this.openTabs.IndexOf(target);
+        if (oldIndex < 0 || targetIndex < 0)
+        {
+            return;
+        }
+
+        var newIndex = before ? targetIndex : targetIndex + 1;
+        if (oldIndex < newIndex)
+        {
+            newIndex--;
+        }
+
+        if (newIndex != oldIndex)
+        {
+            this.openTabs.Move(oldIndex, newIndex);
+        }
+    }
+
+    // ListBoxItem.ActualWidth is just this tab's own rendered width (tabs don't nest, unlike
+    // TreeViewItem), so - unlike GetDropPosition's height-based fraction below - the split is a
+    // simple half rather than a three-way Before/Into/After band; Into is never returned.
+    private static DropPosition GetHorizontalDropPosition(ListBoxItem item, Point position)
+    {
+        return item.ActualWidth > 0 && position.X / item.ActualWidth > 0.5 ? DropPosition.After : DropPosition.Before;
     }
 
     // Re-syncs the canvas with whatever tab is currently active - used when returning to the
