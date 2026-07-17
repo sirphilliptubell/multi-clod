@@ -179,10 +179,25 @@ public partial class AddSessionDialog : Window
         view.Filter = this.FilterBranch;
         this.BranchCombo.ItemsSource = view;
 
-        // No branch is pre-selected/pre-filled - the user picks or types one deliberately.
+        // Pre-fills whichever branch the folder is already on - the most likely branch a user
+        // adding a session from here wants to base a new worktree on. Falls back to leaving the
+        // field blank (as before) when HEAD is detached or somehow isn't in the branch list.
+        var currentBranch = GitRepository.GetCurrentBranch(repoRoot);
+        var preselectedBranch = currentBranch is not null && this.allBranches.Contains(currentBranch) ? currentBranch : null;
+
         this.suppressBranchTextChanged = true;
-        this.BranchCombo.SelectedItem = null;
-        this.BranchCombo.Text = string.Empty;
+        this.BranchCombo.SelectedItem = preselectedBranch;
+        this.BranchCombo.Text = preselectedBranch ?? string.Empty;
+
+        // Forces BranchCombo's control template (and therefore its internal PART_EditableTextBox)
+        // to materialize now, synchronously, while still inside the suppression window above. It
+        // otherwise only materializes lazily on this control's first real layout pass - which, the
+        // first time this method runs, doesn't happen until WorktreeControls (its Collapsed
+        // ancestor) turns Visible via the checkbox. Without this, the internal textbox's Text sync
+        // fires TextBoxBase.TextChanged at that later point, after suppressBranchTextChanged has
+        // already been reset back to false - so OnBranchComboTextChanged treats the preselected
+        // branch name as user-typed filter text and pops the dropdown open, narrowed to just it.
+        this.BranchCombo.ApplyTemplate();
         this.suppressBranchTextChanged = false;
     }
 

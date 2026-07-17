@@ -81,6 +81,18 @@ internal static class GitRepository
         return exitCode == 0 ? stdOut.Trim() : null;
     }
 
+    /// <summary>
+    /// The branch currently checked out in repoRoot (a linked worktree's own HEAD, not the main
+    /// working tree's, if repoRoot is a worktree) - used to pre-fill AddSessionDialog's branch
+    /// combo with the branch the folder is already on. Null when HEAD is detached (symbolic-ref
+    /// fails in that case), matching GetDefaultRemoteBranch's "no answer" convention.
+    /// </summary>
+    internal static string? GetCurrentBranch(string repoRoot)
+    {
+        var (exitCode, stdOut, _) = GitProcess.Run(repoRoot, "symbolic-ref", "--short", "HEAD");
+        return exitCode == 0 ? stdOut.Trim() : null;
+    }
+
     private static IReadOnlyList<string> SplitLines(string output)
     {
         return output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

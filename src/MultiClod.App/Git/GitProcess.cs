@@ -1,38 +1,36 @@
 using System.ComponentModel;
-using System.Diagnostics;
+using System.Threading.Tasks;
+using CliWrap;
+using CliWrap.Buffered;
 
 namespace MultiClod.App.Git;
 
 /// <summary>
 /// Shells out to the user's own git.exe (on PATH) rather than a git library - this app has no
 /// other git dependency to justify pulling one in, and every operation GitRepository/GitWorktree
-/// need is a plain command with parseable stdout.
+/// need is a plain command with parseable stdout. Uses CliWrap (the app-wide standard for
+/// launching CLI processes) rather than raw Process/ProcessStartInfo.
 /// </summary>
 internal static class GitProcess
 {
     internal static (int ExitCode, string StdOut, string StdErr) Run(string workingDirectory, params string[] args)
     {
-        var startInfo = new ProcessStartInfo("git")
-        {
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-
-        foreach (var arg in args)
-        {
-            startInfo.ArgumentList.Add(arg);
-        }
-
         try
         {
-            using var process = Process.Start(startInfo)!;
-            var stdOut = process.StandardOutput.ReadToEnd();
-            var stdErr = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            return (process.ExitCode, stdOut, stdErr);
+            // GitRepository/GitWorktree's callers are synchronous WPF event handlers, so this
+            // blocks rather than propagating async up through the whole call chain. Running
+            // CliWrap's async execution via Task.Run (instead of awaiting it directly on this
+            // thread) means the continuation has no captured SynchronizationContext to marshal
+            // back onto, so blocking on it here can't deadlock the UI thread.
+            var result = Task.Run(() => Cli.Wrap("git")
+                    .WithArguments(args)
+                    .WithWorkingDirectory(workingDirectory)
+                    .WithValidation(CommandResultValidation.None)
+                    .ExecuteBufferedAsync().Task)
+                .GetAwaiter()
+                .GetResult();
+
+            return (result.ExitCode, result.StandardOutput, result.StandardError);
         }
         catch (Win32Exception)
         {

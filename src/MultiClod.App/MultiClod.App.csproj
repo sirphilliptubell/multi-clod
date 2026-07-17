@@ -64,6 +64,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="CliWrap" Version="3.10.2" />
     <PackageReference Include="Velopack" Version="1.2.0" />
     <!-- Renders SKILL.md/CLAUDE.md to a FlowDocument for the Skills/Context panel (MarkdownEditor\MarkdownEditorView.xaml.cs).
          The upstream repo (Kryptos-FR/markdig.wpf) was archived in 2024, but 0.5.0.1 is the
