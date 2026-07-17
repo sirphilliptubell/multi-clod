@@ -12,9 +12,11 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using MultiClod.App.Context;
 using MultiClod.App.Costs;
 using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
+using MultiClod.App.MarkdownEditor;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
 using MultiClod.App.SessionLog;
@@ -89,11 +91,11 @@ public partial class MainWindow : Window
     private Point? tabDragStartPoint;
     private SessionNodeViewModel? tabDragStartSession;
 
-    // Which of Tree/SkillsList (Panel) and the corresponding canvas content is currently visible -
+    // Which of Tree/ContextPanel (Panel) and the corresponding canvas content is currently visible -
     // see SetRailSection.
     private RailSection currentRailSection = RailSection.Sessions;
 
-    // Populated on first click of the Skills rail icon; null means "not scanned yet this run" -
+    // Populated on first click of the Context rail icon; null means "not scanned yet this run" -
     // see EnsureSkillsLoaded. Skills are only rescanned on the next app launch, not live.
     private ObservableCollection<SkillNodeViewModel>? skillNodes;
 
@@ -101,6 +103,28 @@ public partial class MainWindow : Window
     // (user declined to discard a dirty edit), so that reversion doesn't recursively re-trigger
     // the same dirty-check - mirrors suppressSelectionSideEffects's role for the Tree above.
     private bool suppressSkillsSelectionSideEffects;
+
+    // Built on first switch to the Context rail section; null means "not built yet this run" - see
+    // EnsureContextTreeLoaded. Only rebuilt after a save through MarkdownEditor (see
+    // OnMarkdownEditorDocumentSaved) - no FileSystemWatcher, matching the Skills list's own
+    // rescan-on-next-launch-only convention.
+    private ContextFileNodeViewModel? contextRoot;
+
+    // ContextTree and SkillsList share one MarkdownEditor - selecting in one clears the other's
+    // selection so only one node is ever visually "active". Set while that clearing itself is in
+    // flight, so it doesn't recursively re-trigger the other control's selection handler.
+    private bool suppressContextPanelSelectionSync;
+
+    // Tracks which control the currently-loaded MarkdownEditor target came from, so a save only
+    // triggers a Context tree rebuild when it's actually editing a Context node - see
+    // OnMarkdownEditorDocumentSaved.
+    private bool activeMarkdownTargetIsContextNode;
+
+    // Set only from OnContextTreeMouseRightButtonDown before ContextMenuOpening fires - mirrors
+    // the Sessions Tree's own rightClickedNode field (the field-based approach the Tree already
+    // uses successfully, vs. the ListBox's selection-forcing approach - see
+    // OnSkillsListMouseRightButtonDown for why the ListBox needed a different approach).
+    private ContextFileNodeViewModel? rightClickedContextNode;
 
     public MainWindow()
     {
@@ -156,6 +180,10 @@ public partial class MainWindow : Window
         this.SettingsView.DefaultPermissionModeChanged += this.OnDefaultPermissionModeChanged;
         this.SettingsView.ThemeChanged += this.OnThemeChanged;
         this.SettingsView.ShowCostsChanged += this.OnShowCostsChanged;
+
+        // Only trigger for a save that came from the Context tree (see
+        // OnMarkdownEditorDocumentSaved) - saving a Skill doesn't need the Context tree rebuilt.
+        this.MarkdownEditor.DocumentSaved += this.OnMarkdownEditorDocumentSaved;
 
         // Seeds the live-bindable flag every cost badge across the app reads from - see
         // CostDisplaySettings' remarks. Every later toggle flows through OnShowCostsChanged instead.
@@ -654,9 +682,9 @@ public partial class MainWindow : Window
         this.SetRailSection(RailSection.Sessions);
     }
 
-    private void OnSkillsRailIconClick(object sender, MouseButtonEventArgs e)
+    private void OnContextRailIconClick(object sender, MouseButtonEventArgs e)
     {
-        this.SetRailSection(RailSection.Skills);
+        this.SetRailSection(RailSection.Context);
     }
 
     private void OnSettingsRailIconClick(object sender, MouseButtonEventArgs e)
@@ -671,9 +699,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Leaving Skills with an unsaved edit needs the same discard-confirmation as switching to
-        // a different skill within the panel - see SkillDetailView.TryNavigateAway.
-        if (this.currentRailSection == RailSection.Skills && !this.SkillDetail.TryNavigateAway())
+        // Leaving Context with an unsaved edit needs the same discard-confirmation as switching to
+        // a different skill/Context node within the panel - see MarkdownEditorView.TryNavigateAway.
+        if (this.currentRailSection == RailSection.Context && !this.MarkdownEditor.TryNavigateAway())
         {
             return;
         }
@@ -681,26 +709,27 @@ public partial class MainWindow : Window
         this.currentRailSection = section;
 
         this.SessionsAccentBar.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
-        this.SkillsAccentBar.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.ContextAccentBar.Visibility = section == RailSection.Context ? Visibility.Visible : Visibility.Collapsed;
         this.SettingsAccentBar.Visibility = section == RailSection.Settings ? Visibility.Visible : Visibility.Collapsed;
         this.Tree.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
-        this.SkillsList.Visibility = section == RailSection.Skills ? Visibility.Visible : Visibility.Collapsed;
+        this.ContextPanel.Visibility = section == RailSection.Context ? Visibility.Visible : Visibility.Collapsed;
         this.TabStripHost.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
 
         // Both cleared unconditionally here - the branches below re-show whichever one actually
-        // applies (RefreshSkillsCanvas may re-show SkillDetail; the Settings branch always shows
-        // SettingsView). Neither is otherwise toggled anywhere else.
-        this.SkillDetail.Visibility = Visibility.Collapsed;
+        // applies (RefreshContextPanelCanvas may re-show MarkdownEditor; the Settings branch always
+        // shows SettingsView). Neither is otherwise toggled anywhere else.
+        this.MarkdownEditor.Visibility = Visibility.Collapsed;
         this.SettingsView.Visibility = Visibility.Collapsed;
 
-        if (section == RailSection.Skills)
+        if (section == RailSection.Context)
         {
             // SessionViewHost's children are never hidden as a whole - only whichever pane is the
             // active tab - so that pane needs hiding explicitly here; RefreshSessionsCanvas
             // naturally re-shows it when switching back.
             this.HideActiveSessionPane();
             this.EnsureSkillsLoaded();
-            this.RefreshSkillsCanvas();
+            this.EnsureContextTreeLoaded();
+            this.RefreshContextPanelCanvas();
         }
         else if (section == RailSection.Settings)
         {
@@ -783,7 +812,7 @@ public partial class MainWindow : Window
             }
         }
 
-        this.SkillDetail.RefreshTheme();
+        this.MarkdownEditor.RefreshTheme();
     }
 
     private void HideActiveSessionPane()
@@ -806,14 +835,80 @@ public partial class MainWindow : Window
         this.SkillsList.ItemsSource = this.skillNodes;
     }
 
-    private void OnSkillsListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void EnsureContextTreeLoaded()
     {
-        if (this.suppressSkillsSelectionSideEffects)
+        if (this.contextRoot is not null)
         {
             return;
         }
 
-        if (e.RemovedItems.Count > 0 && !this.SkillDetail.TryNavigateAway())
+        this.RebuildContextTree();
+    }
+
+    private void OnMarkdownEditorDocumentSaved(object? sender, string filePath)
+    {
+        if (this.activeMarkdownTargetIsContextNode)
+        {
+            this.RebuildContextTree();
+        }
+    }
+
+    // A full rebuild (rather than patching just the saved node's subtree) is deliberately simpler
+    // and trivially correct for diamond imports (see ContextTreeBuilder's remarks) - the only cost
+    // is losing collapse/expand state that isn't captured below, so previously-expanded nodes are
+    // re-expanded by resolved path after the new tree is built.
+    private void RebuildContextTree()
+    {
+        var expandedPaths = this.contextRoot is null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : CollectExpandedPaths(this.contextRoot);
+
+        this.contextRoot = ContextTreeBuilder.BuildRoot();
+        ReapplyExpansion(this.contextRoot, expandedPaths);
+        this.ContextTree.ItemsSource = new[] { this.contextRoot };
+    }
+
+    private static HashSet<string> CollectExpandedPaths(ContextFileNodeViewModel node)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectExpandedPaths(node, result);
+        return result;
+    }
+
+    private static void CollectExpandedPaths(ContextFileNodeViewModel node, HashSet<string> result)
+    {
+        if (node.IsExpanded)
+        {
+            result.Add(node.ResolvedPath);
+        }
+
+        foreach (var child in node.Children.OfType<ContextFileNodeViewModel>())
+        {
+            CollectExpandedPaths(child, result);
+        }
+    }
+
+    private static void ReapplyExpansion(ContextFileNodeViewModel node, HashSet<string> expandedPaths)
+    {
+        if (expandedPaths.Contains(node.ResolvedPath))
+        {
+            node.IsExpanded = true;
+        }
+
+        foreach (var child in node.Children.OfType<ContextFileNodeViewModel>())
+        {
+            ReapplyExpansion(child, expandedPaths);
+        }
+    }
+
+    private void OnSkillsListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressSkillsSelectionSideEffects || this.suppressContextPanelSelectionSync)
+        {
+            return;
+        }
+
+        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
         {
             this.suppressSkillsSelectionSideEffects = true;
             this.SkillsList.SelectedItem = e.RemovedItems[0];
@@ -821,21 +916,68 @@ public partial class MainWindow : Window
             return;
         }
 
-        this.RefreshSkillsCanvas();
+        // Clear ContextTree's selection so only one of the two stacked controls is ever visually
+        // "active" - guarded so this side effect doesn't recursively re-enter
+        // OnContextTreeSelectedItemChanged (see that handler's own top-of-method guard).
+        if (this.SkillsList.SelectedItem is not null && this.ContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
+        {
+            this.suppressContextPanelSelectionSync = true;
+            contextNode.IsSelected = false;
+            this.suppressContextPanelSelectionSync = false;
+        }
+
+        this.RefreshContextPanelCanvas();
     }
 
-    private void RefreshSkillsCanvas()
+    private void OnContextTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (this.SkillsList.SelectedItem is SkillNodeViewModel node)
+        if (this.suppressContextPanelSelectionSync)
+        {
+            return;
+        }
+
+        if (e.OldValue is ContextFileNodeViewModel oldNode && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressContextPanelSelectionSync = true;
+            oldNode.IsSelected = true;
+            this.suppressContextPanelSelectionSync = false;
+            return;
+        }
+
+        // Clear SkillsList's selection so only one of the two stacked controls is ever visually
+        // "active" - guarded so this side effect doesn't recursively re-enter
+        // OnSkillsListSelectionChanged (see that handler's own top-of-method guard).
+        if (e.NewValue is ContextFileNodeViewModel && this.SkillsList.SelectedItem is not null)
+        {
+            this.suppressContextPanelSelectionSync = true;
+            this.SkillsList.SelectedItem = null;
+            this.suppressContextPanelSelectionSync = false;
+        }
+
+        this.RefreshContextPanelCanvas();
+    }
+
+    private void RefreshContextPanelCanvas()
+    {
+        if (this.ContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
         {
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
-            this.SkillDetail.Visibility = Visibility.Visible;
-            this.SkillDetail.LoadSkill(node.Info);
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownTargetIsContextNode = true;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
+        }
+        else if (this.SkillsList.SelectedItem is SkillNodeViewModel node)
+        {
+            this.PlaceholderText.Visibility = Visibility.Collapsed;
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownTargetIsContextNode = false;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(node.Info.FilePath, node.Info.Name));
         }
         else
         {
-            this.SkillDetail.Visibility = Visibility.Collapsed;
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.PlaceholderText.Visibility = Visibility.Visible;
         }
@@ -866,9 +1008,37 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void OpenContainingFolder(string skillFilePath)
+    private void OnContextTreeMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var folder = Path.GetDirectoryName(skillFilePath);
+        var item = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        this.rightClickedContextNode = item?.DataContext as ContextFileNodeViewModel;
+    }
+
+    private void OnContextTreeContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.ContextTreeContextMenu.Items.Clear();
+
+        if (this.rightClickedContextNode is { } node)
+        {
+            this.ContextTreeContextMenu.Items.Add(CreateMenuItem("Explore to", () => ExploreToContextNode(node)));
+        }
+    }
+
+    private static void ExploreToContextNode(ContextFileNodeViewModel node)
+    {
+        if (node.IsMissing)
+        {
+            OpenNearestExistingAncestorFolder(node.ResolvedPath);
+        }
+        else
+        {
+            OpenContainingFolder(node.ResolvedPath);
+        }
+    }
+
+    private static void OpenContainingFolder(string filePath)
+    {
+        var folder = Path.GetDirectoryName(filePath);
         if (folder is null)
         {
             return;
@@ -880,6 +1050,24 @@ public partial class MainWindow : Window
     private static void OpenFolder(string folder)
     {
         Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+    }
+
+    // Walks up from a not-yet-created @import's resolved path until it finds a directory that
+    // actually exists - a brand-new nested import's immediate parent (and possibly several levels
+    // above that) may not exist yet either, unlike OpenContainingFolder's assumption that the
+    // immediate parent is always real.
+    private static void OpenNearestExistingAncestorFolder(string path)
+    {
+        var folder = Path.GetDirectoryName(path);
+        while (folder is not null && !Directory.Exists(folder))
+        {
+            folder = Path.GetDirectoryName(folder);
+        }
+
+        if (folder is not null)
+        {
+            OpenFolder(folder);
+        }
     }
 
     private void OnTreeKeyDown(object sender, KeyEventArgs e)

@@ -3,7 +3,7 @@
 
     <!-- iOS-style slide switch standing in for a plain checkbox-style ToggleButton - same
          IsChecked semantics as the default template, just a track Border + sliding Ellipse
-         thumb instead of the stock chrome. Used by SkillDetailView's Edit toggle. -->
+         thumb instead of the stock chrome. Used by MarkdownEditorView's Edit toggle. -->
     <Style x:Key="ToggleSwitchStyle" TargetType="ToggleButton">
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">

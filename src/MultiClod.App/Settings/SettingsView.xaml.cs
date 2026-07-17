@@ -10,7 +10,7 @@ namespace MultiClod.App.Settings;
 
 /// <summary>
 /// Canvas content for the Settings rail section: a plain list of toggles/fields, applied
-/// immediately (no separate Save step, unlike SkillDetailView) - each one is just a persisted
+/// immediately (no separate Save step, unlike MarkdownEditorView) - each one is just a persisted
 /// value, not an edit a user could accidentally lose. New settings are added here as more controls
 /// bound to AppSettings properties, same pattern as the ones below.
 /// </summary>

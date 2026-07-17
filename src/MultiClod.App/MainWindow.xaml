@@ -4,7 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MultiClod.App"
-        xmlns:skills="clr-namespace:MultiClod.App.Skills"
+        xmlns:mde="clr-namespace:MultiClod.App.MarkdownEditor"
+        xmlns:context="clr-namespace:MultiClod.App.Context"
         xmlns:settings="clr-namespace:MultiClod.App.Settings"
         xmlns:costs="clr-namespace:MultiClod.App.Costs"
         xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
@@ -125,6 +126,122 @@
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
+
+        <!--
+            CLAUDE.md and its @import tree (Context\ContextTreeBuilder) - Missing/Cycle nodes grey
+            out via the same SecondaryForeground convention as SessionNodeViewModel's IsInvalid
+            above, but Italic rather than Strikethrough: these files aren't invalid, just not yet
+            created or already expanded earlier in this chain. The two states are distinguished via
+            ToolTipText rather than separate colors, to keep the visual vocabulary small.
+        -->
+        <HierarchicalDataTemplate DataType="{x:Type context:ContextFileNodeViewModel}" ItemsSource="{Binding Children}">
+            <TextBlock x:Name="ContextNodeText" Text="{Binding Name}" ToolTip="{Binding ToolTipText}"
+                       Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="2" TextTrimming="CharacterEllipsis" />
+            <HierarchicalDataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                    <Setter TargetName="ContextNodeText" Property="Foreground" Value="{DynamicResource Theme.Brush.SecondaryForeground}" />
+                    <Setter TargetName="ContextNodeText" Property="FontStyle" Value="Italic" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCycle}" Value="True">
+                    <Setter TargetName="ContextNodeText" Property="Foreground" Value="{DynamicResource Theme.Brush.SecondaryForeground}" />
+                    <Setter TargetName="ContextNodeText" Property="FontStyle" Value="Italic" />
+                </DataTrigger>
+            </HierarchicalDataTemplate.Triggers>
+        </HierarchicalDataTemplate>
+
+        <!--
+            Trimmed copy of the shared (implicit, below) TreeViewItem style for ContextTree: same
+            selection-highlight visuals and IsSelected/IsExpanded bindings, but no drag/drop
+            EventSetters or CostBadge column - those assume Sessions-tree semantics that don't apply
+            to a CLAUDE.md/@import node. Assigned explicitly via ContextTree's ItemContainerStyle,
+            which takes precedence over the implicit (unkeyed) style below for that TreeView's
+            containers.
+        -->
+        <Style x:Key="ContextTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <EventSetter Event="Selected" Handler="OnItemSelected" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TreeViewItem}">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition MinWidth="19" Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+                            <ToggleButton x:Name="Expander" ClickMode="Press"
+                                          IsChecked="{Binding Path=IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Width" Value="16" />
+                                        <Setter Property="Height" Value="16" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Border Background="Transparent" Height="16" Padding="5" Width="16">
+                                                        <Path x:Name="ExpandPath" Data="M0,0L0,6L6,0z"
+                                                              Fill="LimeGreen" Stroke="LimeGreen">
+                                                            <Path.RenderTransform>
+                                                                <RotateTransform Angle="135" CenterX="3" CenterY="3" />
+                                                            </Path.RenderTransform>
+                                                        </Path>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsChecked" Value="True">
+                                                            <Setter Property="RenderTransform" TargetName="ExpandPath">
+                                                                <Setter.Value>
+                                                                    <RotateTransform Angle="180" CenterX="3" CenterY="3" />
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ToggleButton.Style>
+                            </ToggleButton>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    Grid.Column="1" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                <ContentPresenter x:Name="PART_Header" ContentSource="Header"
+                                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                   SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Column="1" Grid.Row="1" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter Property="Visibility" TargetName="ItemsHost" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter Property="Visibility" TargetName="Expander" Value="Hidden" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" TargetName="Bd" Value="{DynamicResource {x:Static sys:SystemColors.HighlightBrushKey}}" />
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static sys:SystemColors.HighlightTextBrushKey}}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="IsSelectionActive" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter Property="Background" TargetName="Bd" Value="{DynamicResource {x:Static sys:SystemColors.ControlBrushKey}}" />
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static sys:SystemColors.ControlTextBrushKey}}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static sys:SystemColors.GrayTextBrushKey}}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!--
             Drag/drop is wired on every TreeViewItem via this shared style, AND separately on the
@@ -365,7 +482,7 @@
         <Border Grid.Column="0" Background="{DynamicResource Theme.Brush.RailBackground}" BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,0,1,0">
             <StackPanel>
                 <Grid x:Name="SessionsRailIcon" Width="48" Height="48" Margin="0,8,0,0"
-                      MouseLeftButtonDown="OnSessionsRailIconClick">
+                      MouseLeftButtonDown="OnSessionsRailIconClick" ToolTip="Claude Sessions">
                     <!-- Accent bar marks this item as the one owning the currently visible Panel. -->
                     <Border x:Name="SessionsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" />
                     <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
@@ -390,9 +507,9 @@
                     </Border>
                 </Grid>
 
-                <Grid x:Name="SkillsRailIcon" Width="48" Height="48"
-                      MouseLeftButtonDown="OnSkillsRailIconClick">
-                    <Border x:Name="SkillsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
+                <Grid x:Name="ContextRailIcon" Width="48" Height="48"
+                      MouseLeftButtonDown="OnContextRailIconClick" ToolTip="Context / Skills">
+                    <Border x:Name="ContextAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
                     <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
                         <!-- Simple document/sheet glyph (rounded card + three ruled lines) for the Skills panel.
                              The card and its ruled lines are a fixed pair (not theme-linked) - the lines are
@@ -408,7 +525,7 @@
                 </Grid>
 
                 <Grid x:Name="SettingsRailIcon" Width="48" Height="48"
-                      MouseLeftButtonDown="OnSettingsRailIconClick">
+                      MouseLeftButtonDown="OnSettingsRailIconClick" ToolTip="Settings">
                     <Border x:Name="SettingsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
                     <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
                         <!-- Gear glyph from Assets/settings.png, used as an OpacityMask over a plain
@@ -458,29 +575,64 @@
                 </TreeView.ContextMenu>
             </TreeView>
 
-            <!-- Skills panel: a flat list of personal skills (~/.claude/skills/*/SKILL.md), populated
-                 in code-behind by MainWindow.EnsureSkillsLoaded. Mutually exclusive with Tree via
-                 Visibility, same convention as the canvas's own children below. -->
-            <ListBox x:Name="SkillsList" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
-                     Visibility="Collapsed"
-                     SelectionChanged="OnSkillsListSelectionChanged"
-                     MouseRightButtonDown="OnSkillsListMouseRightButtonDown"
-                     ContextMenuOpening="OnSkillsListContextMenuOpening">
-                <ListBox.ContextMenu>
-                    <ContextMenu x:Name="SkillsContextMenu" />
-                </ListBox.ContextMenu>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
-                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
-                            <!-- Description is left plain (no visibility converter for the null/empty
-                                 case) - an empty TextBlock with no MinHeight collapses to zero height
-                                 visually, so there's no blank gap worth the extra converter class. -->
-                            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <!--
+                Context/Skills panel: CLAUDE.md + its @import tree (ContextTree) stacked above a
+                separator and the personal skills list (SkillsList) - see MainWindow.SetRailSection.
+                Mutually exclusive with Tree via Visibility, same convention as the canvas's own
+                children below. One shared Visibility flag controls both stacked children together,
+                since they're always shown/hidden as a unit.
+            -->
+            <Grid x:Name="ContextPanel" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" MaxHeight="220" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- CLAUDE.md (Context\ClaudeConfigDirectory) and its recursive @imports (Context\ContextTreeBuilder). -->
+                <TreeView x:Name="ContextTree" Grid.Row="0" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ItemContainerStyle="{StaticResource ContextTreeItemStyle}"
+                          SelectedItemChanged="OnContextTreeSelectedItemChanged"
+                          MouseRightButtonDown="OnContextTreeMouseRightButtonDown"
+                          ContextMenuOpening="OnContextTreeContextMenuOpening">
+                    <TreeView.Resources>
+                        <!-- Same selection-highlight overrides as Tree above, duplicated since each TreeView's Resources is its own scope. -->
+                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
+                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                    </TreeView.Resources>
+                    <TreeView.ContextMenu>
+                        <ContextMenu x:Name="ContextTreeContextMenu" />
+                    </TreeView.ContextMenu>
+                </TreeView>
+
+                <Border Grid.Row="1" Height="1" Margin="4,4" Background="{DynamicResource Theme.Brush.Border}" />
+
+                <!-- Flat list of personal skills (~/.claude/skills/*/SKILL.md), populated in code-behind by MainWindow.EnsureSkillsLoaded. -->
+                <ListBox x:Name="SkillsList" Grid.Row="2" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                         SelectionChanged="OnSkillsListSelectionChanged"
+                         MouseRightButtonDown="OnSkillsListMouseRightButtonDown"
+                         ContextMenuOpening="OnSkillsListContextMenuOpening">
+                    <ListBox.ContextMenu>
+                        <ContextMenu x:Name="SkillsContextMenu" />
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
+                                <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                <!-- Description is left plain (no visibility converter for the null/empty
+                                     case) - an empty TextBlock with no MinHeight collapses to zero height
+                                     visually, so there's no blank gap worth the extra converter class. -->
+                                <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
         </Grid>
 
         <GridSplitter Grid.Column="2" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -521,7 +673,7 @@
                     Shown whenever there's no active tab (nothing ever opened, or the active tab
                     was just closed) and no skill is selected either. Always present, never
                     removed - only Visibility toggles, same rule as the session panes and
-                    SkillDetail below.
+                    MarkdownEditor below.
                 -->
                 <TextBlock x:Name="PlaceholderText" Text="Select or launch a session" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -538,8 +690,8 @@
                 -->
                 <Grid x:Name="SessionViewHost" />
 
-                <!-- Rendered/edited SKILL.md for the currently selected skill - see Skills\SkillDetailView. -->
-                <skills:SkillDetailView x:Name="SkillDetail" Visibility="Collapsed" />
+                <!-- Rendered/edited markdown for the currently selected skill or Context node - see MarkdownEditor\MarkdownEditorView. -->
+                <mde:MarkdownEditorView x:Name="MarkdownEditor" Visibility="Collapsed" />
 
                 <!-- App preferences - see Settings\SettingsView. -->
                 <settings:SettingsView x:Name="SettingsView" Visibility="Collapsed" />

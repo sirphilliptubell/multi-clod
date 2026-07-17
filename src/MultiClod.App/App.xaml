@@ -7,7 +7,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <!-- Default styles (headings, code blocks, etc.) for FlowDocuments produced by
-                     Markdig.Wpf.Markdown.ToFlowDocument - see Skills\SkillDetailView.xaml.cs. -->
+                     Markdig.Wpf.Markdown.ToFlowDocument - see MarkdownEditor\MarkdownEditorView.xaml.cs. -->
                 <ResourceDictionary Source="pack://application:,,,/Markdig.Wpf;component/Themes/generic.xaml" />
 
                 <!-- Merged at the app level (not just locally in TranscriptViewerControl) so this

@@ -6,21 +6,23 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace MultiClod.App.Skills;
+namespace MultiClod.App.MarkdownEditor;
 
 /// <summary>
-/// Canvas content for a selected skill: a read-only Markdig.Wpf-rendered view by default, with a
-/// toggle to a raw-text edit mode (Save button + Ctrl+S) that writes back to the SKILL.md file.
+/// Canvas content for a selected markdown file: a read-only Markdig.Wpf-rendered view by default,
+/// with a toggle to a raw-text edit mode (Save button + Ctrl+S) that writes back to disk. Shared by
+/// both the Skills list (SKILL.md) and the Context tree (CLAUDE.md and its @imports) - callers
+/// identify what's loaded via a plain MarkdownEditorTarget rather than a feature-specific type.
 /// The only file in this app that references Markdig.Wpf types, mirroring how WpfTerminalPane is
 /// the only file bridging Microsoft.Terminal.Wpf into this app's own abstractions.
 /// </summary>
-public partial class SkillDetailView : UserControl
+public partial class MarkdownEditorView : UserControl
 {
-    private SkillInfo? currentSkill;
+    private MarkdownEditorTarget? currentTarget;
     private string originalRawText = string.Empty;
     private bool suppressDirtyCheck;
 
-    public SkillDetailView()
+    public MarkdownEditorView()
     {
         this.InitializeComponent();
     }
@@ -28,23 +30,25 @@ public partial class SkillDetailView : UserControl
     public bool IsDirty { get; private set; }
 
     /// <summary>
-    /// Reads the skill's raw text fresh from disk, renders it, and resets to view mode - called by
-    /// MainWindow whenever a different skill is selected. Assumes the caller already confirmed any
-    /// prior dirty edit via TryNavigateAway.
+    /// Reads the target's raw text fresh from disk (or starts empty in edit mode if the file
+    /// doesn't exist yet - e.g. a not-yet-created @import), renders it, and resets to view mode -
+    /// called by MainWindow whenever a different skill or Context node is selected. Assumes the
+    /// caller already confirmed any prior dirty edit via TryNavigateAway.
     /// </summary>
-    internal void LoadSkill(SkillInfo info)
+    internal void LoadDocument(MarkdownEditorTarget target)
     {
-        this.currentSkill = info;
+        this.currentTarget = target;
 
+        var fileExists = File.Exists(target.FilePath);
         string rawText;
         try
         {
-            rawText = File.ReadAllText(info.FilePath);
+            rawText = fileExists ? File.ReadAllText(target.FilePath) : string.Empty;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(Window.GetWindow(this), $"Could not read '{info.Name}': {ex.Message}",
-                "Skill Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(Window.GetWindow(this), $"Could not read '{target.DisplayName}': {ex.Message}",
+                "Load Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             rawText = string.Empty;
         }
 
@@ -55,13 +59,16 @@ public partial class SkillDetailView : UserControl
         this.suppressDirtyCheck = false;
 
         this.RenderMarkdown(rawText);
-        this.SetEditMode(false);
+        // A not-yet-created file (e.g. a missing @import) has nothing to render in view mode, so it
+        // opens straight into edit mode with an empty buffer instead.
+        this.SetEditMode(!fileExists);
         this.UpdateDirtyState();
     }
 
     /// <summary>
-    /// Called before MainWindow switches to a different skill or rail section. Prompts to discard
-    /// unsaved edits; returns false (caller should stay put) only if the user declines to discard.
+    /// Called before MainWindow switches to a different skill, Context node, or rail section.
+    /// Prompts to discard unsaved edits; returns false (caller should stay put) only if the user
+    /// declines to discard.
     /// </summary>
     internal bool TryNavigateAway()
     {
@@ -80,17 +87,24 @@ public partial class SkillDetailView : UserControl
     }
 
     /// <summary>
-    /// Re-renders the currently loaded skill's markdown so its colors match the just-applied
-    /// theme - called by MainWindow.OnThemeChanged. A no-op if no skill is loaded (the view mode
+    /// Re-renders the currently loaded document's markdown so its colors match the just-applied
+    /// theme - called by MainWindow.OnThemeChanged. A no-op if nothing is loaded (the view mode
     /// FlowDocumentScrollViewer/RawEditor's own DynamicResource-bound colors update on their own).
     /// </summary>
     internal void RefreshTheme()
     {
-        if (this.currentSkill is not null)
+        if (this.currentTarget is not null)
         {
             this.RenderMarkdown(this.RawEditor.Text);
         }
     }
+
+    /// <summary>
+    /// Raised after a successful Save, with the saved file's path. The only refresh trigger for the
+    /// Context tree - there's no FileSystemWatcher, matching the Skills list's existing
+    /// rescan-on-next-launch-only convention.
+    /// </summary>
+    internal event EventHandler<string>? DocumentSaved;
 
     // Markdig.Wpf's default styles (App.xaml's generic.xaml merge) set Foreground on each block
     // (heading/paragraph) style rather than relying on inheritance, so setting it once on the
@@ -243,18 +257,21 @@ public partial class SkillDetailView : UserControl
 
     private void Save()
     {
-        if (this.currentSkill is not { } skill)
+        if (this.currentTarget is not { } target)
         {
             return;
         }
 
         try
         {
-            File.WriteAllText(skill.FilePath, this.RawEditor.Text);
+            // Harmless no-op when the directory already exists; creates missing parents when this
+            // is a brand-new nested @import path being filled in for the first time.
+            Directory.CreateDirectory(Path.GetDirectoryName(target.FilePath)!);
+            File.WriteAllText(target.FilePath, this.RawEditor.Text);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(Window.GetWindow(this), $"Could not save '{skill.Name}': {ex.Message}",
+            MessageBox.Show(Window.GetWindow(this), $"Could not save '{target.DisplayName}': {ex.Message}",
                 "Save Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
@@ -262,11 +279,12 @@ public partial class SkillDetailView : UserControl
         this.originalRawText = this.RawEditor.Text;
         this.UpdateDirtyState();
         this.RenderMarkdown(this.originalRawText);
+        this.DocumentSaved?.Invoke(this, target.FilePath);
     }
 
     private bool ConfirmDiscard()
     {
-        var name = this.currentSkill?.Name ?? "this skill";
+        var name = this.currentTarget?.DisplayName ?? "this document";
         var result = MessageBox.Show(
             Window.GetWindow(this),
             $"Discard unsaved changes to '{name}'?",

@@ -7,8 +7,8 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Shared with Skills\SkillDetailView's Edit toggle - not duplicated here. -->
-                <ResourceDictionary Source="/MultiClod.App;component/Skills/ToggleSwitchStyle.xaml" />
+                <!-- Shared with MarkdownEditor\MarkdownEditorView's Edit toggle - not duplicated here. -->
+                <ResourceDictionary Source="/MultiClod.App;component/MarkdownEditor/ToggleSwitchStyle.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <Style TargetType="TextBox">

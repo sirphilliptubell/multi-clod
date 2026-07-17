@@ -1,12 +1,16 @@
 # multi-clod
 
 A WPF desktop app (`MultiClod.App`) with a rail/panel/canvas layout: a narrow icon rail on the far
-left selects between features - Sessions (a panel managing a tree of projects/sessions, with a
-canvas hosting embedded Claude Code CLI sessions via a vendored Microsoft terminal control), Skills
-(a panel listing personal Claude Code skills from `~/.claude/skills`, with a canvas that renders the
-selected skill's `SKILL.md` and can switch to a raw-text editor), and Settings (no tree/list panel -
-just a canvas of persisted toggles/fields, e.g. default root folder, git worktree usage, Claude
-permission mode, and app theme). Releases are packaged
+left (each icon has a tooltip) selects between features - Sessions (a panel managing a tree of
+projects/sessions, with a canvas hosting embedded Claude Code CLI sessions via a vendored Microsoft
+terminal control), Context / Skills (a panel stacking two controls: a `ContextTree` showing the
+resolved user-level `CLAUDE.md` (honoring `CLAUDE_CONFIG_DIR`) and its recursive `@import` tree -
+greying out not-yet-created or cycle-detected nodes - above a separator and the existing flat list
+of personal Claude Code skills from `~/.claude/skills`; selecting either shows the selected
+file/skill in a shared `MarkdownEditorView` canvas, which renders `SKILL.md`/`CLAUDE.md` and can
+switch to a raw-text editor), and Settings (no tree/list panel - just a canvas of persisted
+toggles/fields, e.g. default root folder, git worktree usage, Claude permission mode, and app
+theme). Releases are packaged
 with Velopack (`vpk`) and published as GitHub Releases on this repo (via
 `.github/workflows/release.yml`, triggered by pushing a `vX.Y.Z` tag); running instances auto-update
 from there.
