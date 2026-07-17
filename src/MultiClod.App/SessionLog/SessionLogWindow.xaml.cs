@@ -26,6 +26,7 @@ public partial class SessionLogWindow : Window
     private SubagentTranscriptWatcher? subagentWatcher;
     private string mainSessionFilePath;
     private bool isMainSessionSelected = true;
+    private bool isTreeInitialized;
 
     public SessionLogWindow(SessionNodeViewModel session, SessionCostMonitorService costMonitor)
     {
@@ -44,11 +45,13 @@ public partial class SessionLogWindow : Window
         this.Closed += (_, _) =>
         {
             this.subagentWatcher?.Dispose();
+            this.TreeView.Dispose();
             this.costMonitor.SubagentFileCostUpdated -= this.OnSubagentFileCostUpdated;
         };
 
         this.StartWatchingSubagents();
         this.SelectMainSession();
+        this.SetViewMode(isTreeMode: false);
     }
 
     // Seeded from the session node's own aggregate (already summed across main + all subagent
@@ -90,12 +93,41 @@ public partial class SessionLogWindow : Window
         this.subagentWatcher?.Dispose();
         this.subagents.Clear();
 
-        var projectDir = Path.GetDirectoryName(this.mainSessionFilePath)!;
-        var sessionDir = Path.Combine(projectDir, this.session.ClaudeSessionId.ToString());
-
-        var watcher = new SubagentTranscriptWatcher(sessionDir);
+        var watcher = new SubagentTranscriptWatcher(this.GetSessionDir());
         watcher.SubagentDiscovered += this.OnSubagentDiscovered;
         this.subagentWatcher = watcher;
+    }
+
+    private string GetSessionDir()
+    {
+        var projectDir = Path.GetDirectoryName(this.mainSessionFilePath)!;
+        return Path.Combine(projectDir, this.session.ClaudeSessionId.ToString());
+    }
+
+    private void OnListModeClicked(object sender, RoutedEventArgs e)
+    {
+        this.SetViewMode(isTreeMode: false);
+    }
+
+    private void OnTreeModeClicked(object sender, RoutedEventArgs e)
+    {
+        this.SetViewMode(isTreeMode: true);
+    }
+
+    private void SetViewMode(bool isTreeMode)
+    {
+        this.ListBodyRoot.Visibility = isTreeMode ? Visibility.Collapsed : Visibility.Visible;
+        this.TreeView.Visibility = isTreeMode ? Visibility.Visible : Visibility.Collapsed;
+
+        var selectedBrush = new SolidColorBrush(Color.FromRgb(0x28, 0x48, 0x61));
+        this.ListModeButton.Background = isTreeMode ? Brushes.Transparent : selectedBrush;
+        this.TreeModeButton.Background = isTreeMode ? selectedBrush : Brushes.Transparent;
+
+        if (isTreeMode && !this.isTreeInitialized)
+        {
+            this.isTreeInitialized = true;
+            this.TreeView.Initialize(this.mainSessionFilePath, this.GetSessionDir());
+        }
     }
 
     private void OnSubagentDiscovered(SessionLogSourceViewModel source)
@@ -141,6 +173,14 @@ public partial class SessionLogWindow : Window
             if (this.isMainSessionSelected)
             {
                 this.Viewer.SetSource(this.mainSessionFilePath);
+            }
+
+            // Only re-point the Tree if it's already been initialized once (lazy - the user may
+            // never have switched to Tree mode at all) - the next switch to Tree mode will
+            // initialize it fresh with the current paths regardless.
+            if (this.isTreeInitialized)
+            {
+                this.TreeView.Initialize(this.mainSessionFilePath, this.GetSessionDir());
             }
         });
     }

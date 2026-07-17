@@ -13,6 +13,12 @@
                 <!-- Merged at the app level (not just locally in TranscriptViewerControl) so this
                      category styling is available to any future consumer - see SessionLog\Rendering. -->
                 <ResourceDictionary Source="SessionLog/Rendering/TranscriptCategoryStyles.xaml" />
+
+                <!-- The Tree view's minimal box template - reuses CategoryToGlyphConverter/
+                     CategoryToBrushConverter from the dictionary above (both live in one flattened
+                     Application.Resources scope once merged, same as every other cross-file
+                     StaticResource lookup in this app). See SessionLog\Tree\TreeBoxStyles.xaml. -->
+                <ResourceDictionary Source="SessionLog/Tree/TreeBoxStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!--

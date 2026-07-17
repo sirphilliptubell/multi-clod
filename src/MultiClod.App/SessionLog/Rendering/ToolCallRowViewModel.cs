@@ -18,16 +18,22 @@ public sealed class ToolCallRowViewModel : TranscriptRowViewModel
     private JsonElement? toolResultLineRoot;
     private JsonElement? toolResultContent;
 
-    public ToolCallRowViewModel(JsonElement toolUseLineRoot, string toolName, JsonElement? toolInput, string inputPreview)
+    public ToolCallRowViewModel(JsonElement toolUseLineRoot, string toolName, JsonElement? toolInput, string inputPreview, string? toolUseId = null)
         : base(TranscriptRowCategory.ToolCall, TranscriptTimestamp.TryRead(toolUseLineRoot))
     {
         this.toolUseLineRoot = toolUseLineRoot;
         this.ToolName = toolName;
         this.toolInput = toolInput;
         this.inputPreview = inputPreview;
+        this.ToolUseId = toolUseId;
     }
 
     public string ToolName { get; }
+
+    // The tool_use block's own "id" - null for a synthesized/orphan row that never had one (e.g.
+    // ProcessToolResult's orphan-result row). Used by SessionLog.Tree.TreeGraphBuilder to match a
+    // subagent's meta.json "toolUseId" back to the exact row that spawned it.
+    public string? ToolUseId { get; }
 
     public bool IsPending { get; private set; } = true;
 

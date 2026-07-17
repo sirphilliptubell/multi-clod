@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
         xmlns:sessionLog="clr-namespace:MultiClod.App.SessionLog"
+        xmlns:tree="clr-namespace:MultiClod.App.SessionLog.Tree"
         xmlns:costs="clr-namespace:MultiClod.App.Costs"
         Title="Session Log" Height="900" Width="1400"
         MaxHeight="{x:Static sys:SystemParameters.PrimaryScreenHeight}"
@@ -16,45 +17,66 @@
         <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
     </Window.Resources>
     <Grid Background="#1E1E1E">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <DockPanel Grid.Column="0" Background="#181818">
-            <!-- DataContext is a SessionLogSourceViewModel set in code-behind (see
-                 SessionLogWindow.CreateMainSessionSource) - both child TextBlocks inherit it, so
-                 the cost line reflects the same session-wide aggregate as the tree/tab badge. -->
-            <StackPanel x:Name="MainSessionHeaderPanel" DockPanel.Dock="Top" Cursor="Hand"
-                        MouseLeftButtonUp="OnMainSessionSelected"
-                        ContextMenuOpening="OnMainSessionContextMenuOpening">
-                <StackPanel.ContextMenu>
-                    <ContextMenu x:Name="MainSessionContextMenu" />
-                </StackPanel.ContextMenu>
-                <TextBlock x:Name="MainSessionHeader" Text="Main Session"
-                           Foreground="White" FontWeight="Bold" Padding="10,10,10,0" />
-                <costs:CostBadge CostText="{Binding CostBadgeText}" BreakdownText="{Binding CostBreakdownText}" Margin="10,0,10,6" />
-            </StackPanel>
-            <Separator DockPanel.Dock="Top" Margin="8,0,8,4" />
-            <TextBlock DockPanel.Dock="Top" Text="SUBAGENTS" Foreground="Gray" Padding="10,4" FontSize="11" />
-            <ListBox x:Name="SubagentsListBox" Background="#181818" BorderThickness="0"
-                     SelectionChanged="OnSubagentSelected"
-                     MouseRightButtonDown="OnSubagentsListMouseRightButtonDown"
-                     ContextMenuOpening="OnSubagentsListContextMenuOpening">
-                <ListBox.ContextMenu>
-                    <ContextMenu x:Name="SubagentsContextMenu" />
-                </ListBox.ContextMenu>
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="{x:Type sessionLog:SessionLogSourceViewModel}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" Foreground="White" Padding="4,2" TextTrimming="CharacterEllipsis" />
-                            <costs:CostBadge CostText="{Binding CostBadgeText}" BreakdownText="{Binding CostBreakdownText}" Margin="4,2" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </DockPanel>
+        <!-- List/Tree toggle - swaps the ENTIRE window body below via Visibility, never tearing
+             either body down (same convention MainWindow uses for its rail-selected panels), so
+             switching back to List preserves its selected source and scroll position for free. -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#181818">
+            <Button x:Name="ListModeButton" Content="List" Padding="12,6" Margin="4" BorderThickness="0"
+                    Foreground="White" Click="OnListModeClicked" />
+            <Button x:Name="TreeModeButton" Content="Tree" Padding="12,6" Margin="4" BorderThickness="0"
+                    Foreground="White" Click="OnTreeModeClicked" />
+        </StackPanel>
 
-        <sessionLog:TranscriptViewerControl x:Name="Viewer" Grid.Column="1" />
+        <Grid Grid.Row="1">
+            <Grid x:Name="ListBodyRoot">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="260" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <DockPanel Grid.Column="0" Background="#181818">
+                    <!-- DataContext is a SessionLogSourceViewModel set in code-behind (see
+                         SessionLogWindow.CreateMainSessionSource) - both child TextBlocks inherit it, so
+                         the cost line reflects the same session-wide aggregate as the tree/tab badge. -->
+                    <StackPanel x:Name="MainSessionHeaderPanel" DockPanel.Dock="Top" Cursor="Hand"
+                                MouseLeftButtonUp="OnMainSessionSelected"
+                                ContextMenuOpening="OnMainSessionContextMenuOpening">
+                        <StackPanel.ContextMenu>
+                            <ContextMenu x:Name="MainSessionContextMenu" />
+                        </StackPanel.ContextMenu>
+                        <TextBlock x:Name="MainSessionHeader" Text="Main Session"
+                                   Foreground="White" FontWeight="Bold" Padding="10,10,10,0" />
+                        <costs:CostBadge CostText="{Binding CostBadgeText}" BreakdownText="{Binding CostBreakdownText}" Margin="10,0,10,6" />
+                    </StackPanel>
+                    <Separator DockPanel.Dock="Top" Margin="8,0,8,4" />
+                    <TextBlock DockPanel.Dock="Top" Text="SUBAGENTS" Foreground="Gray" Padding="10,4" FontSize="11" />
+                    <ListBox x:Name="SubagentsListBox" Background="#181818" BorderThickness="0"
+                             SelectionChanged="OnSubagentSelected"
+                             MouseRightButtonDown="OnSubagentsListMouseRightButtonDown"
+                             ContextMenuOpening="OnSubagentsListContextMenuOpening">
+                        <ListBox.ContextMenu>
+                            <ContextMenu x:Name="SubagentsContextMenu" />
+                        </ListBox.ContextMenu>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type sessionLog:SessionLogSourceViewModel}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding DisplayName}" Foreground="White" Padding="4,2" TextTrimming="CharacterEllipsis" />
+                                    <costs:CostBadge CostText="{Binding CostBadgeText}" BreakdownText="{Binding CostBreakdownText}" Margin="4,2" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <sessionLog:TranscriptViewerControl x:Name="Viewer" Grid.Column="1" />
+            </Grid>
+
+            <tree:SessionTreeView x:Name="TreeView" Visibility="Collapsed" />
+        </Grid>
     </Grid>
 </Window>

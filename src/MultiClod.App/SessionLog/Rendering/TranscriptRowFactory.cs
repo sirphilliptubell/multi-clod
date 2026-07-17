@@ -119,7 +119,7 @@ public sealed class TranscriptRowFactory
         JsonElement? inputElement = block.TryGetProperty("input", out var input) ? input : null;
         var inputPreview = inputElement is { } inputValue ? TranscriptJsonFormatting.FormatCompact(inputValue) : string.Empty;
 
-        var row = new ToolCallRowViewModel(lineRoot, name, inputElement, inputPreview);
+        var row = new ToolCallRowViewModel(lineRoot, name, inputElement, inputPreview, toolUseId: id.Length > 0 ? id : null);
         if (id.Length > 0)
         {
             this.pendingToolUses[id] = row;

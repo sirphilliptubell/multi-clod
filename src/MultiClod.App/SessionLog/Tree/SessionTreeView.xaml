@@ -1,0 +1,90 @@
+<UserControl x:Class="MultiClod.App.SessionLog.Tree.SessionTreeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="#1E1E1E">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="420" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Canvas host - a ScrollViewer wrapping a Canvas whose RenderTransform is the zoom
+             ScaleTransform. GraphCanvas.Width/Height are kept equal to pixelExtent * scale (see
+             code-behind SetScale) so ScrollViewer's own extent/clamping math lines up with what's
+             actually visible after the render transform - this is what makes "can't pan/zoom past
+             the top-left origin" fall out of plain ScrollViewer offsets instead of hand-rolled
+             clamping. Children (boxes, connector overlay) are positioned using UNSCALED
+             Canvas.Left/Top/Width/Height - the single ScaleTransform on GraphCanvas scales that
+             whole subtree uniformly. -->
+        <Grid Grid.Column="0">
+            <ScrollViewer x:Name="ViewPort" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          PreviewMouseWheel="OnViewPortPreviewMouseWheel"
+                          PreviewMouseLeftButtonDown="OnViewPortPreviewMouseLeftButtonDown"
+                          PreviewMouseMove="OnViewPortPreviewMouseMove"
+                          PreviewMouseLeftButtonUp="OnViewPortPreviewMouseLeftButtonUp">
+                <Canvas x:Name="GraphCanvas" Background="Transparent">
+                    <Canvas.RenderTransform>
+                        <ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1" />
+                    </Canvas.RenderTransform>
+
+                    <!-- ConnectorOverlay is inserted as the FIRST child in code-behind (constructor),
+                         so it always renders BEHIND the boxes below. -->
+                    <ItemsControl x:Name="BoxesItemsControl">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                    </ItemsControl>
+                </Canvas>
+            </ScrollViewer>
+
+            <TextBlock x:Name="WaitingText" Text="Waiting for session to start..." Foreground="Gray"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+
+            <!-- Toolbar overlay - "Show all events" mirrors TranscriptViewerControl's own checkbox
+                 but rebuilds layout on change (decision D2/D9's "must rebuild, not just filter" note)
+                 rather than a CollectionView refresh, since hiding boxes changes geometry. -->
+            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8" Background="#992A2A2A"
+                    CornerRadius="4" Padding="8,4">
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="ShowAllEventsCheckBox" Content="Show all events" Foreground="White" Margin="0,0,12,0"
+                              Checked="OnShowAllEventsChanged" Unchecked="OnShowAllEventsChanged" />
+                    <Button x:Name="ResetViewButton" Content="Reset view" Padding="8,2" Click="OnResetViewClicked" />
+                </StackPanel>
+            </Border>
+
+            <!-- Same fade-in/out mechanics as TranscriptViewerControl's NewArrivalsBanner - snapshot
+                 + manual refresh (decision D7) means this is the ONLY signal that new content
+                 exists; nothing re-lays-out until the user clicks it. -->
+            <Border x:Name="RefreshBanner" Background="#2A2A2A" BorderBrush="#3A96DD" BorderThickness="1"
+                    CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16"
+                    Padding="12,6" Opacity="0" Visibility="Collapsed" Cursor="Hand"
+                    MouseLeftButtonUp="OnRefreshBannerClicked">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="2" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               Foreground="#3A96DD" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="New entries - Refresh" Foreground="White" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#3F3F3F" />
+
+        <!-- Detail pane - reuses the exact same row DataTemplates the List view uses
+             (TranscriptCategoryStyles.xaml, merged app-wide in App.xaml), so the selected box's
+             full body/Source JSON/copy button render with zero new template code (decision D6). -->
+        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+            <ContentControl x:Name="DetailHost" Margin="8" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

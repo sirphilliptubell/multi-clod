@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:tree="clr-namespace:MultiClod.App.SessionLog.Tree"
+                    xmlns:costs="clr-namespace:MultiClod.App.Costs">
+
+    <tree:BoxTypeWordConverter x:Key="BoxTypeWordConverter" />
+
+    <!-- Distinct from any category accent color, so a selection highlight can never be confused
+         with a row's own category (decision D6). -->
+    <SolidColorBrush x:Key="TreeBoxSelectedBrush" Color="#F0C929" />
+
+    <!-- Minimal box: glyph + short type word + cost badge, no summary text (decision D2). Reuses
+         CategoryToGlyphConverter/CategoryToBrushConverter from TranscriptCategoryStyles.xaml (both
+         merged app-wide in App.xaml, same as this dictionary) so a box's accent matches its row's
+         category in the List view exactly. Selection is a yellow highlight border (decision D6); a
+         box belonging to an orphan agent (missing/unmatched meta.json) renders muted so the
+         unlinked state reads as visually distinct without needing its own connector. -->
+    <DataTemplate DataType="{x:Type tree:BoxNode}">
+        <Border x:Name="BoxBorder" Width="160" Height="40" CornerRadius="4" BorderThickness="1"
+                Background="#1E1E1E" Padding="6,4" Cursor="Hand"
+                BorderBrush="{Binding RowVm.Category, Converter={StaticResource CategoryToBrushConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,6,0"
+                           Text="{Binding RowVm.Category, Converter={StaticResource CategoryToGlyphConverter}}"
+                           Foreground="{Binding RowVm.Category, Converter={StaticResource CategoryToBrushConverter}}" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Converter={StaticResource BoxTypeWordConverter}}" Foreground="White"
+                               FontSize="11" TextTrimming="CharacterEllipsis" />
+                    <costs:CostBadge CostText="{Binding RowVm.LineCostText}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Owner.IsOrphan}" Value="True">
+                <Setter TargetName="BoxBorder" Property="Opacity" Value="0.55" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                <Setter TargetName="BoxBorder" Property="BorderBrush" Value="{StaticResource TreeBoxSelectedBrush}" />
+                <Setter TargetName="BoxBorder" Property="BorderThickness" Value="2" />
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+</ResourceDictionary>
