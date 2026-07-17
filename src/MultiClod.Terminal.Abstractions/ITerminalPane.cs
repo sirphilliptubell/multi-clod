@@ -20,8 +20,6 @@ public interface ITerminalPane : IDisposable
     /// </summary>
     bool NewlineOnShiftEnter { get; set; }
 
-    event EventHandler? CloseRequested;
-
     void Attach(IPtyConnection connection);
 
     void ApplyTheme(TerminalPaneTheme theme);

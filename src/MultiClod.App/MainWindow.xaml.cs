@@ -200,7 +200,6 @@ public partial class MainWindow : Window
         host.Pane.ApplyTheme(ThemeManager.GetTerminalTheme(this.appSettings.Theme));
         host.Pane.NewlineOnShiftEnter = this.appSettings.UseShiftEnterForNewline;
         host.Pane.Title = node.DisplayTitle;
-        host.CloseRequested += (_, _) => this.StopSession(node);
 
         // Added to the shared container exactly once, here, for this host's entire lifetime -
         // never remove a live session's view from the tree to hide it (only Visibility toggle -
@@ -427,18 +426,23 @@ public partial class MainWindow : Window
         }
     }
 
+    // The tab strip's own X is the only close affordance sessions have now (the pane itself no
+    // longer shows one - see WpfTerminalPane), so it stops the session outright rather than just
+    // hiding the tab: same StopSession call as the tree's "Stop" context-menu item, which is what
+    // hollows the tree's status dot (SessionNodeViewModel.IsHollow follows IsRunning).
     private void OnCloseTabClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is SessionNodeViewModel session)
         {
             this.CloseTab(session);
+            this.StopSession(session);
         }
     }
 
-    // Removes `session`'s tab from the strip. Deliberately does not stop the session - it keeps
-    // running in the background and reopens as a tab next time it's selected in the tree (or
-    // restored on next launch - see RestoreOpenTabs). "Stop" in the tree's context menu is the only
-    // way to actually kill it.
+    // Removes `session`'s tab from the strip. Does not itself stop the session - callers that want
+    // that (OnCloseTabClick, OnDelete) call StopSession separately. Used on its own by
+    // RestoreOpenTabs/OnTreeSelectedItemChanged's OpenTab path, where the session should keep
+    // running in the background.
     private void CloseTab(SessionNodeViewModel session)
     {
         var index = this.openTabs.IndexOf(session);
