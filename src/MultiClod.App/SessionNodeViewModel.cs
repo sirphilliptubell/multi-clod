@@ -130,10 +130,11 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         }
     }
 
-    // Real backing state overriding TreeNodeViewModel's always-NoData default - CostBadgeText is
-    // inherited as-is from the base class, since it already reads through this (virtual) property
-    // polymorphically. Only SessionCostMonitorService ever calls UpdateCostSummary, already
-    // marshaled to the UI thread, so no additional dispatcher handling is needed here.
+    // Real backing state overriding TreeNodeViewModel's always-NoData default - CostBadgeText/
+    // CostBreakdownText are inherited as-is from the base class, since they already read through
+    // this (virtual) property polymorphically. Only SessionCostMonitorService ever calls
+    // UpdateCostSummary, already marshaled to the UI thread, so no additional dispatcher handling
+    // is needed here.
     internal override SessionCostSummary CostSummary => this.costSummary;
 
     internal void UpdateCostSummary(SessionCostSummary summary)
@@ -141,6 +142,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.costSummary = summary;
         this.RaisePropertyChanged(nameof(this.CostSummary));
         this.RaisePropertyChanged(nameof(this.CostBadgeText));
+        this.RaisePropertyChanged(nameof(this.CostBreakdownText));
     }
 
     public void AttachLiveSession(TerminalSession session)
