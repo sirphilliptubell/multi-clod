@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MultiClod.App.Costs;
+using MultiClod.App.Native;
 using MultiClod.App.Validation;
 
 namespace MultiClod.App.SessionLog;
@@ -167,5 +168,50 @@ public partial class SessionLogWindow : Window
         this.isMainSessionSelected = false;
         this.MainSessionHeaderPanel.Background = Brushes.Transparent;
         this.Viewer.SetSource(source.FilePath);
+    }
+
+    private void OnMainSessionContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.MainSessionContextMenu.Items.Clear();
+        this.MainSessionContextMenu.Items.Add(ContextMenuHelper.CreateMenuItem("Explore to", () => ExploreToSource(this.mainSessionSource)));
+        this.MainSessionContextMenu.Items.Add(ContextMenuHelper.CreateMenuItem("Copy Full Path", () => Clipboard.SetText(this.mainSessionSource.FilePath)));
+    }
+
+    private void OnSubagentsListMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = ContextMenuHelper.FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+
+        if (item is not null && !item.IsSelected)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    private void OnSubagentsListContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.SubagentsContextMenu.Items.Clear();
+
+        if (this.SubagentsListBox.SelectedItem is not SessionLogSourceViewModel source)
+        {
+            return;
+        }
+
+        this.SubagentsContextMenu.Items.Add(ContextMenuHelper.CreateMenuItem("Explore to", () => ExploreToSource(source)));
+        this.SubagentsContextMenu.Items.Add(ContextMenuHelper.CreateMenuItem("Copy Full Path", () => Clipboard.SetText(source.FilePath)));
+    }
+
+    // Main Session's file may not exist yet (window opens in a "waiting for session to start..."
+    // state before the transcript file appears) - fall back to the nearest existing ancestor
+    // folder rather than failing to launch explorer.exe at all.
+    private static void ExploreToSource(SessionLogSourceViewModel source)
+    {
+        if (File.Exists(source.FilePath))
+        {
+            WindowsExplorer.OpenAndSelect(source.FilePath);
+        }
+        else
+        {
+            WindowsExplorer.OpenNearestExistingAncestorFolder(source.FilePath);
+        }
     }
 }

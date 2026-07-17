@@ -1,8 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -1004,7 +1002,7 @@ public partial class MainWindow : Window
         // didn't reproduce under static inspection.
         if (this.SkillsList.SelectedItem is SkillNodeViewModel skill)
         {
-            this.SkillsContextMenu.Items.Add(CreateMenuItem("Explore to", () => OpenContainingFolder(skill.Info.FilePath)));
+            this.SkillsContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenAndSelect(skill.Info.FilePath)));
         }
     }
 
@@ -1028,45 +1026,11 @@ public partial class MainWindow : Window
     {
         if (node.IsMissing)
         {
-            OpenNearestExistingAncestorFolder(node.ResolvedPath);
+            WindowsExplorer.OpenNearestExistingAncestorFolder(node.ResolvedPath);
         }
         else
         {
-            OpenContainingFolder(node.ResolvedPath);
-        }
-    }
-
-    private static void OpenContainingFolder(string filePath)
-    {
-        var folder = Path.GetDirectoryName(filePath);
-        if (folder is null)
-        {
-            return;
-        }
-
-        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
-    }
-
-    private static void OpenFolder(string folder)
-    {
-        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
-    }
-
-    // Walks up from a not-yet-created @import's resolved path until it finds a directory that
-    // actually exists - a brand-new nested import's immediate parent (and possibly several levels
-    // above that) may not exist yet either, unlike OpenContainingFolder's assumption that the
-    // immediate parent is always real.
-    private static void OpenNearestExistingAncestorFolder(string path)
-    {
-        var folder = Path.GetDirectoryName(path);
-        while (folder is not null && !Directory.Exists(folder))
-        {
-            folder = Path.GetDirectoryName(folder);
-        }
-
-        if (folder is not null)
-        {
-            OpenFolder(folder);
+            WindowsExplorer.OpenAndSelect(node.ResolvedPath);
         }
     }
 
@@ -1330,6 +1294,7 @@ public partial class MainWindow : Window
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Add Session", () => this.OnAddSession(session)));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Import Session", () => this.OnImportSession(session)));
                 this.TreeContextMenu.Items.Add(new Separator());
+                this.TreeContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenFolder(session.WorkingDirectory)));
 
                 // Plain enable/disable (unlike Delete's error-dialog approach) - "Stop while
                 // dormant" needs no explanation, it's just not a currently valid action.
@@ -1337,7 +1302,6 @@ public partial class MainWindow : Window
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(session), inputGestureText: "F2"));
 
                 var metadataMenu = new MenuItem { Header = "Metadata" };
-                metadataMenu.Items.Add(CreateMenuItem($"Explore to {session.WorkingDirectory}", () => OpenFolder(session.WorkingDirectory)));
                 metadataMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
 
                 // No enabled: guard - must work even before the session has ever been launched
