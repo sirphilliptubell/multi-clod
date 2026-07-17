@@ -147,15 +147,19 @@
             <CheckBox x:Name="WorktreeCheckBox" Content="Create a git worktree for this session"
                       Margin="0,18,0,0" Checked="OnWorktreeCheckedChanged" Unchecked="OnWorktreeCheckedChanged" />
 
-            <TextBlock Text="Worktree name (new branch)" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
-            <TextBox x:Name="WorktreeNameBox" IsEnabled="False" />
+            <!-- Hidden rather than just disabled while WorktreeCheckBox is unchecked - see
+                 OnWorktreeCheckedChanged. -->
+            <StackPanel x:Name="WorktreeControls" Visibility="Collapsed">
+                <TextBlock Text="Worktree name (new branch)" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
+                <TextBox x:Name="WorktreeNameBox" />
 
-            <TextBlock Text="Branch to create it from" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
-            <!-- IsEditable + a custom filter (OnBranchComboTextChanged/FilterBranch in the code-behind)
-                 make this searchable: WPF's built-in IsTextSearchEnabled only jumps to the first
-                 matching item rather than narrowing the list, so it's turned off in favor of that. -->
-            <ComboBox x:Name="BranchCombo" IsEnabled="False" IsEditable="True" IsTextSearchEnabled="False"
-                      TextBoxBase.TextChanged="OnBranchComboTextChanged" />
+                <TextBlock Text="Branch to create it from" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,14,0,4" />
+                <!-- IsEditable + a custom filter (OnBranchComboTextChanged/FilterBranch in the code-behind)
+                     make this searchable: WPF's built-in IsTextSearchEnabled only jumps to the first
+                     matching item rather than narrowing the list, so it's turned off in favor of that. -->
+                <ComboBox x:Name="BranchCombo" IsEditable="True" IsTextSearchEnabled="False"
+                          TextBoxBase.TextChanged="OnBranchComboTextChanged" />
+            </StackPanel>
         </StackPanel>
 
         <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Theme.Brush.Error}" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />

@@ -239,8 +239,8 @@ public partial class AddSessionDialog : Window
     private void OnWorktreeCheckedChanged(object sender, RoutedEventArgs e)
     {
         var isChecked = this.WorktreeCheckBox.IsChecked == true;
-        this.WorktreeNameBox.IsEnabled = isChecked;
-        this.BranchCombo.IsEnabled = isChecked;
+        this.WorktreeControls.Visibility = isChecked ? Visibility.Visible : Visibility.Collapsed;
+        this.ResizeToContent();
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e)
