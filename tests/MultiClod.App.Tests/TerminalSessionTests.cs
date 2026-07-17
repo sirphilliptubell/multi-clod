@@ -156,8 +156,6 @@ public sealed class TerminalSessionTests
 #pragma warning disable CS0067 // never raised - TerminalSession only needs to subscribe successfully
         public event EventHandler<SessionState>? StateChanged;
 
-        public event EventHandler? CloseRequested;
-
         public event EventHandler<string>? TitleChanged;
 #pragma warning restore CS0067
 

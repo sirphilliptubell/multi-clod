@@ -16,14 +16,9 @@ public sealed class WpfSessionHost : ISessionHost
     public WpfSessionHost()
     {
         this.Pane = new WpfTerminalPane();
-
-        // Forwarded 1:1 so callers only ever need to hold the host, not reach into Pane directly.
-        this.Pane.CloseRequested += (sender, e) => this.CloseRequested?.Invoke(sender, e);
     }
 
     public event EventHandler<SessionState>? StateChanged;
-
-    public event EventHandler? CloseRequested;
 
     public event EventHandler<string>? TitleChanged;
 
