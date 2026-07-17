@@ -33,10 +33,15 @@ public sealed class SessionLogSourceViewModel : INotifyPropertyChanged
 
     public string? CostBadgeText => SessionCostAggregator.FormatBadge(this.costSummary);
 
+    // Per-model "slug: $X.XX" lines, most expensive first, unpriced models last - bound to
+    // CostBadge's tooltip so hovering the badge explains what actually contributed to the total.
+    public string? CostBreakdownText => SessionCostAggregator.FormatBreakdown(this.costSummary);
+
     internal void UpdateCostSummary(SessionCostSummary summary)
     {
         this.costSummary = summary;
         this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.CostSummary)));
         this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.CostBadgeText)));
+        this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.CostBreakdownText)));
     }
 }

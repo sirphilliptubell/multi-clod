@@ -58,6 +58,10 @@ public abstract class TreeNodeViewModel : INotifyPropertyChanged
 
     public virtual string? CostBadgeText => SessionCostAggregator.FormatBadge(this.CostSummary);
 
+    // Per-model "slug: $X.XX" lines, most expensive first, unpriced models last - bound to
+    // CostBadge's tooltip so hovering the badge explains what actually contributed to the total.
+    public virtual string? CostBreakdownText => SessionCostAggregator.FormatBreakdown(this.CostSummary);
+
     protected void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (Equals(field, value))

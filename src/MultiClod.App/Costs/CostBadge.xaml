@@ -15,6 +15,7 @@
          (Grid.Row/Column, Margin, alignment) stays with each caller, since that differs per usage
          (tree badge, tab badge, Session Log header/list, transcript row). -->
     <TextBlock Text="{Binding CostText, ElementName=Root}"
+               ToolTip="{Binding BreakdownText, ElementName=Root}"
                Foreground="{DynamicResource Theme.Brush.Cost}"
                FontSize="11" VerticalAlignment="Center">
         <TextBlock.Visibility>

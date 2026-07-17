@@ -17,6 +17,11 @@ public partial class CostBadge : UserControl
     public static readonly DependencyProperty CostTextProperty =
         DependencyProperty.Register(nameof(CostText), typeof(string), typeof(CostBadge), new PropertyMetadata(null));
 
+    // Optional - a caller with nothing to break down (e.g. a transcript row, already a single
+    // model) simply never binds this, and no tooltip appears at all.
+    public static readonly DependencyProperty BreakdownTextProperty =
+        DependencyProperty.Register(nameof(BreakdownText), typeof(string), typeof(CostBadge), new PropertyMetadata(null));
+
     public CostBadge()
     {
         this.InitializeComponent();
@@ -26,5 +31,11 @@ public partial class CostBadge : UserControl
     {
         get => (string?)this.GetValue(CostTextProperty);
         set => this.SetValue(CostTextProperty, value);
+    }
+
+    public string? BreakdownText
+    {
+        get => (string?)this.GetValue(BreakdownTextProperty);
+        set => this.SetValue(BreakdownTextProperty, value);
     }
 }

@@ -1,5 +1,6 @@
 using MultiClod.App.Costs;
 using TUnit.Assertions;
+using TUnit.Assertions.Enums;
 using TUnit.Assertions.Extensions;
 using TUnit.Core;
 
@@ -16,7 +17,7 @@ public sealed class SessionCostAggregatorTests
     [Test]
     public async Task FormatBadge_AllKnown_ReturnsPlainDollarAmount()
     {
-        var summary = SessionCostSummary.Of(1.234m, hasUnknownContribution: false);
+        var summary = SessionCostSummary.Of(1.234m, hasUnknownContribution: false, modelBreakdown: []);
 
         await Assert.That(SessionCostAggregator.FormatBadge(summary)).IsEqualTo("$1.23");
     }
@@ -24,7 +25,7 @@ public sealed class SessionCostAggregatorTests
     [Test]
     public async Task FormatBadge_HasUnknownContribution_PrefixesGreaterThan()
     {
-        var summary = SessionCostSummary.Of(2.5m, hasUnknownContribution: true);
+        var summary = SessionCostSummary.Of(2.5m, hasUnknownContribution: true, modelBreakdown: []);
 
         await Assert.That(SessionCostAggregator.FormatBadge(summary)).IsEqualTo(">$2.50");
     }
@@ -32,7 +33,7 @@ public sealed class SessionCostAggregatorTests
     [Test]
     public async Task FormatBadge_TinyKnownAmount_FloorsToLessThanOneCent()
     {
-        var summary = SessionCostSummary.Of(0.0004m, hasUnknownContribution: false);
+        var summary = SessionCostSummary.Of(0.0004m, hasUnknownContribution: false, modelBreakdown: []);
 
         await Assert.That(SessionCostAggregator.FormatBadge(summary)).IsEqualTo("<$0.01");
     }
@@ -42,7 +43,7 @@ public sealed class SessionCostAggregatorTests
     {
         // With an unknown contribution, the ">" prefix already signals "at least this much" - a
         // known amount that rounds to zero should show "$0.00", not stack "<$0.01" under the ">".
-        var summary = SessionCostSummary.Of(0.0004m, hasUnknownContribution: true);
+        var summary = SessionCostSummary.Of(0.0004m, hasUnknownContribution: true, modelBreakdown: []);
 
         await Assert.That(SessionCostAggregator.FormatBadge(summary)).IsEqualTo(">$0.00");
     }
@@ -50,7 +51,7 @@ public sealed class SessionCostAggregatorTests
     [Test]
     public async Task FormatBadge_ExactlyZeroKnownAmount_ShowsPlainZero()
     {
-        var summary = SessionCostSummary.Of(0m, hasUnknownContribution: false);
+        var summary = SessionCostSummary.Of(0m, hasUnknownContribution: false, modelBreakdown: []);
 
         await Assert.That(SessionCostAggregator.FormatBadge(summary)).IsEqualTo("$0.00");
     }
@@ -76,5 +77,69 @@ public sealed class SessionCostAggregatorTests
         var summary = SessionCostAggregator.Aggregate([mainLog]);
 
         await Assert.That(summary.HasUnknownContribution).IsFalse();
+    }
+
+    [Test]
+    public async Task Aggregate_Breakdown_SortsKnownDescendingWithUnknownLast()
+    {
+        var mainLog = new Dictionary<string, decimal?>
+        {
+            ["claude-haiku-4-5"] = 0.50m,
+            ["claude-opus-4-8"] = 1.00m,
+            ["some-new-model"] = null,
+        };
+
+        var summary = SessionCostAggregator.Aggregate([mainLog]);
+
+        await Assert.That(summary.ModelBreakdown.Select(entry => entry.ModelSlug))
+            .IsEquivalentTo(["claude-opus-4-8", "claude-haiku-4-5", "some-new-model"], CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task Aggregate_Breakdown_SumsSameModelAcrossFiles()
+    {
+        var mainLog = new Dictionary<string, decimal?> { ["claude-opus-4-8"] = 1.00m };
+        var subagent = new Dictionary<string, decimal?> { ["claude-opus-4-8"] = 0.25m };
+
+        var summary = SessionCostAggregator.Aggregate([mainLog, subagent]);
+
+        await Assert.That(summary.ModelBreakdown).Count().IsEqualTo(1);
+        await Assert.That(summary.ModelBreakdown[0].AmountUsd).IsEqualTo(1.25m);
+    }
+
+    [Test]
+    public async Task Aggregate_Breakdown_StickyNullAcrossFiles()
+    {
+        var mainLog = new Dictionary<string, decimal?> { ["some-new-model"] = 1.00m };
+        var subagent = new Dictionary<string, decimal?> { ["some-new-model"] = null };
+
+        var summary = SessionCostAggregator.Aggregate([mainLog, subagent]);
+
+        await Assert.That(summary.ModelBreakdown).Count().IsEqualTo(1);
+        await Assert.That(summary.ModelBreakdown[0].AmountUsd).IsNull();
+    }
+
+    [Test]
+    public async Task FormatBreakdown_NoData_ReturnsNull()
+    {
+        await Assert.That(SessionCostAggregator.FormatBreakdown(SessionCostSummary.NoData)).IsNull();
+    }
+
+    [Test]
+    public async Task FormatBreakdown_FormatsOneLinePerModel_InBreakdownOrder()
+    {
+        var mainLog = new Dictionary<string, decimal?>
+        {
+            ["claude-haiku-4-5"] = 0.50m,
+            ["claude-opus-4-8"] = 1.00m,
+            ["some-new-model"] = null,
+        };
+
+        var summary = SessionCostAggregator.Aggregate([mainLog]);
+
+        await Assert.That(SessionCostAggregator.FormatBreakdown(summary)).IsEqualTo(
+            "claude-opus-4-8: $1.00" + Environment.NewLine +
+            "claude-haiku-4-5: $0.50" + Environment.NewLine +
+            "some-new-model: $?.??");
     }
 }
