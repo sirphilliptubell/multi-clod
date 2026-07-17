@@ -270,13 +270,26 @@
         </DataTemplate>
 
         <!-- Selected tab gets the same blue accent (bottom edge) as the tree's focused-selection
-             highlight, for visual consistency; unselected tabs are flat with a thin divider. -->
+             highlight, for visual consistency; unselected tabs are flat with a thin divider.
+
+             Drag/drop reordering is wired here (per item) AND separately on the TabStrip ListBox
+             itself (see OnTabStripDragOver/OnTabStripDrop) - same split as the tree's own DnD:
+             the horizontal StackPanel of tabs doesn't fill the ListBox's full width, so a drop
+             past the last tab routes to the ListBox, not any ListBoxItem. Bubbling DragOver/Drop
+             means a drop on an actual tab is handled (and marked e.Handled = true) by that tab's
+             own handler first, so the ListBox-level handler only ever fires for a genuine
+             past-the-last-tab drop. -->
         <Style x:Key="SessionTabItemContainerStyle" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0,0,1,2" />
             <Setter Property="BorderBrush" Value="#2D2D30" />
             <Setter Property="Foreground" Value="White" />
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnTabItemPreviewMouseLeftButtonDown" />
+            <EventSetter Event="PreviewMouseMove" Handler="OnTabItemPreviewMouseMove" />
+            <Setter Property="AllowDrop" Value="True" />
+            <EventSetter Event="DragOver" Handler="OnTabItemDragOver" />
+            <EventSetter Event="Drop" Handler="OnTabItemDrop" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -458,7 +471,10 @@
                          ItemContainerStyle="{StaticResource SessionTabItemContainerStyle}"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                         SelectionChanged="OnTabStripSelectionChanged">
+                         SelectionChanged="OnTabStripSelectionChanged"
+                         AllowDrop="True"
+                         DragOver="OnTabStripDragOver"
+                         Drop="OnTabStripDrop">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Horizontal" />
