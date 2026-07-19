@@ -172,6 +172,20 @@ public sealed class SessionTreeController
     }
 
     /// <summary>
+    /// Undoing a move/delete that put a node back under the Uncategorized pseudo-project needs
+    /// that project to exist first - it may have been auto-removed by <see cref="RemoveUncategorizedIfEmpty"/>
+    /// the moment the original move/delete emptied it. Re-adds it (same index-0 convention as
+    /// <see cref="GetOrCreateUncategorized"/>) only when it's actually missing.
+    /// </summary>
+    public void EnsureUncategorizedPresent(ProjectNodeViewModel uncategorized)
+    {
+        if (!this.RootNodes.Contains(uncategorized))
+        {
+            this.RootNodes.Insert(0, uncategorized);
+        }
+    }
+
+    /// <summary>
     /// Removes <paramref name="node"/> from wherever it currently sits and inserts it as a child
     /// of <paramref name="newParent"/> (or at the tree's root if null) at <paramref name="index"/>,
     /// clamped to the resulting collection's bounds. Used for both reparenting and same-parent

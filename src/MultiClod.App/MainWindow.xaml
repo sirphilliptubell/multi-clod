@@ -12,7 +12,8 @@
         mc:Ignorable="d"
         Title="Multi-Clod" Height="600" Width="1000"
         KeyboardNavigation.DirectionalNavigation="None"
-        KeyboardNavigation.TabNavigation="None">
+        KeyboardNavigation.TabNavigation="None"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
     <!--
         DirectionalNavigation/TabNavigation="None" on the Window is required, not just on
         WpfTerminalPane's own internal container: without it, pressing an arrow key while the

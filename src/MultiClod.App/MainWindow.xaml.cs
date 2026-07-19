@@ -21,6 +21,7 @@ using MultiClod.App.SessionLog;
 using MultiClod.App.Settings;
 using MultiClod.App.Skills;
 using MultiClod.App.Theming;
+using MultiClod.App.Undo;
 using MultiClod.App.Updates;
 using MultiClod.Terminal.Abstractions;
 using MultiClod.Terminal.Wpf;
@@ -37,7 +38,17 @@ public partial class MainWindow : Window
     private readonly ClaudeSessionHooksInstaller hooksInstaller;
     private readonly ShiftDeleteHook shiftDeleteHook;
     private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
+    private readonly UndoRedoShortcutHook undoRedoHook;
     private readonly SessionLogWindowRegistry sessionLogWindows = new();
+
+    // Covers Move/Delete/Rename on the tree - see the three call sites below. In-memory only, not
+    // persisted, so history is lost on restart same as any other unsaved UI state.
+    private readonly UndoManager undoManager = new();
+
+    // Set around every modal ShowDialog() call (OnAddProject/OnAddSession/OnImportSession/OnRename)
+    // so UndoRedoShortcutHook's global Ctrl+Z/Ctrl+Y can tell it should let the keystroke fall
+    // through to whichever TextBox has real focus in the dialog, instead of undoing the tree.
+    private bool isModalDialogOpen;
 
     // Owns every started session's FileSystemWatcher-driven cost tracking - see
     // SessionCostMonitorService's remarks for why this is centralized rather than per-session.
@@ -201,6 +212,11 @@ public partial class MainWindow : Window
         // per keystroke, not captured here) because this window's own hwnd doesn't exist yet
         // until WPF creates it later during Show()/OnSourceInitialized.
         this.arrowKeyRoutingHook = new TerminalArrowKeyRoutingHook(() => new WindowInteropHelper(this).Handle);
+
+        // Same rationale as shiftDeleteHook above - Ctrl+Z/Ctrl+Y need to reach the tree's undo
+        // stack even while a terminal owns native focus. See UndoRedoShortcutHook's remarks for
+        // why isModalDialogOpen is checked live rather than captured.
+        this.undoRedoHook = new UndoRedoShortcutHook(() => this.isModalDialogOpen, this.OnUndoShortcut, this.OnRedoShortcut);
 
         this.Closing += this.OnClosing;
 
@@ -1065,6 +1081,39 @@ public partial class MainWindow : Window
         this.OnDelete(node);
     }
 
+    // Window-level (not OnTreeKeyDown) since undo/redo act on whatever was last done, not on the
+    // Tree's current selection - unlike F2/Shift+Delete, they shouldn't require a selected node or
+    // the Tree having WPF focus. UndoRedoShortcutHook is the path that matters once a terminal
+    // session has real Win32 focus - see its remarks.
+    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.Control)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Z)
+        {
+            this.OnUndoShortcut();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Y)
+        {
+            this.OnRedoShortcut();
+            e.Handled = true;
+        }
+    }
+
+    private void OnUndoShortcut()
+    {
+        this.undoManager.TryUndo();
+    }
+
+    private void OnRedoShortcut()
+    {
+        this.undoManager.TryRedo();
+    }
+
     private void OnTreeMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var item = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
@@ -1181,9 +1230,39 @@ public partial class MainWindow : Window
     private void MoveAndPersist(TreeNodeViewModel dragged, TreeNodeViewModel? newParent, int index)
     {
         var oldParent = dragged.Parent;
+        var oldSiblings = oldParent?.Children ?? this.controller.RootNodes;
+        var oldIndex = oldSiblings.IndexOf(dragged);
+
         this.controller.MoveTo(dragged, newParent, index);
         this.controller.RemoveUncategorizedIfEmpty(oldParent);
         this.controller.ScheduleSave();
+
+        this.undoManager.Push(
+            undo: () =>
+            {
+                this.EnsureUncategorizedPresentIfNeeded(oldParent);
+                this.controller.MoveTo(dragged, oldParent, oldIndex);
+                this.controller.RemoveUncategorizedIfEmpty(newParent);
+                this.controller.ScheduleSave();
+            },
+            redo: () =>
+            {
+                this.EnsureUncategorizedPresentIfNeeded(newParent);
+                this.controller.MoveTo(dragged, newParent, index);
+                this.controller.RemoveUncategorizedIfEmpty(oldParent);
+                this.controller.ScheduleSave();
+            });
+    }
+
+    // Undoing/redoing a move that puts a node back under Uncategorized needs that pseudo-project
+    // to exist first - it may have been auto-removed by RemoveUncategorizedIfEmpty the moment the
+    // move/delete being reversed emptied it. See SessionTreeController.EnsureUncategorizedPresent.
+    private void EnsureUncategorizedPresentIfNeeded(TreeNodeViewModel? parent)
+    {
+        if (parent is ProjectNodeViewModel { IsUncategorized: true } uncategorized)
+        {
+            this.controller.EnsureUncategorizedPresent(uncategorized);
+        }
     }
 
     /// <summary>
@@ -1315,6 +1394,23 @@ public partial class MainWindow : Window
         }
     }
 
+    // Wraps ShowDialog() so UndoRedoShortcutHook's global Ctrl+Z/Ctrl+Y knows to let the keystroke
+    // fall through to whichever TextBox owns real focus inside the dialog (e.g. text-undo while
+    // typing a name), rather than firing the tree's own undo/redo. Every ShowDialog() call in this
+    // window goes through here.
+    private bool? ShowModal(Window dialog)
+    {
+        this.isModalDialogOpen = true;
+        try
+        {
+            return dialog.ShowDialog();
+        }
+        finally
+        {
+            this.isModalDialogOpen = false;
+        }
+    }
+
     private void OnAddProject()
     {
         var dialog = new RenameDialog(
@@ -1325,7 +1421,7 @@ public partial class MainWindow : Window
             Owner = this,
         };
 
-        if (dialog.ShowDialog() == true)
+        if (this.ShowModal(dialog) == true)
         {
             this.controller.AddProject(dialog.NewName);
         }
@@ -1346,7 +1442,7 @@ public partial class MainWindow : Window
                 : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         var dialog = new AddSessionDialog(defaultFolder, this.appSettings.UseWorktreeByDefault) { Owner = this };
-        if (dialog.ShowDialog() != true)
+        if (this.ShowModal(dialog) != true)
         {
             return;
         }
@@ -1359,7 +1455,7 @@ public partial class MainWindow : Window
     private void OnImportSession(TreeNodeViewModel parent)
     {
         var dialog = new ImportSessionWindow { Owner = this };
-        if (dialog.ShowDialog() != true || dialog.SelectedResult is not { } result)
+        if (this.ShowModal(dialog) != true || dialog.SelectedResult is not { } result)
         {
             return;
         }
@@ -1379,14 +1475,24 @@ public partial class MainWindow : Window
             Owner = this,
         };
 
-        if (dialog.ShowDialog() == true)
+        var oldName = node.Name;
+        if (this.ShowModal(dialog) == true)
         {
-            this.controller.Rename(node, dialog.NewName);
+            var newName = dialog.NewName;
+            this.controller.Rename(node, newName);
+
+            this.undoManager.Push(
+                undo: () => this.controller.Rename(node, oldName),
+                redo: () => this.controller.Rename(node, newName));
         }
     }
 
     private void OnDelete(TreeNodeViewModel node)
     {
+        var oldParent = node.Parent;
+        var oldSiblings = oldParent?.Children ?? this.controller.RootNodes;
+        var oldIndex = oldSiblings.IndexOf(node);
+
         if (node is SessionNodeViewModel session)
         {
             this.CloseTab(session);
@@ -1407,6 +1513,43 @@ public partial class MainWindow : Window
         {
             this.costMonitor.UnregisterSession(deletedSession);
         }
+
+        this.undoManager.Push(
+            undo: () =>
+            {
+                this.EnsureUncategorizedPresentIfNeeded(oldParent);
+
+                var siblings = oldParent?.Children ?? this.controller.RootNodes;
+                siblings.Insert(Math.Clamp(oldIndex, 0, siblings.Count), node);
+                node.Parent = oldParent;
+
+                if (node is SessionNodeViewModel restoredSession)
+                {
+                    this.controller.RevalidateBeforeLaunch(restoredSession);
+                    this.costMonitor.RegisterSession(restoredSession);
+                }
+
+                this.controller.ScheduleSave();
+            },
+            redo: () =>
+            {
+                if (node is SessionNodeViewModel sessionAgain)
+                {
+                    this.CloseTab(sessionAgain);
+
+                    if (sessionAgain.IsRunning)
+                    {
+                        this.StopSession(sessionAgain);
+                    }
+                }
+
+                this.controller.TryDelete(node, out _);
+
+                if (node is SessionNodeViewModel deletedSessionAgain)
+                {
+                    this.costMonitor.UnregisterSession(deletedSessionAgain);
+                }
+            });
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)
@@ -1418,6 +1561,7 @@ public partial class MainWindow : Window
 
         this.shiftDeleteHook.Dispose();
         this.arrowKeyRoutingHook.Dispose();
+        this.undoRedoHook.Dispose();
 
         if (Application.Current is App app)
         {
