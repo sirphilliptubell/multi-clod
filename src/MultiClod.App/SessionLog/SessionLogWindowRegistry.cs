@@ -13,7 +13,7 @@ public sealed class SessionLogWindowRegistry
 {
     private readonly Dictionary<Guid, SessionLogWindow> openWindows = new();
 
-    public void ShowOrFocus(SessionNodeViewModel session, Window owner, SessionCostMonitorService costMonitor)
+    public void ShowOrFocus(SessionNodeViewModel session, Window owner, SessionCostMonitorService costMonitor, bool showCosts = false)
     {
         if (this.openWindows.TryGetValue(session.Id, out var existing))
         {
@@ -22,11 +22,16 @@ public sealed class SessionLogWindowRegistry
                 existing.WindowState = WindowState.Normal;
             }
 
+            if (showCosts)
+            {
+                existing.ShowCostsView();
+            }
+
             existing.Activate();
             return;
         }
 
-        var window = new SessionLogWindow(session, costMonitor) { Owner = owner };
+        var window = new SessionLogWindow(session, costMonitor, showCosts) { Owner = owner };
         window.Closed += (_, _) => this.openWindows.Remove(session.Id);
         this.openWindows[session.Id] = window;
         window.Show();

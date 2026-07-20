@@ -1374,21 +1374,18 @@ public partial class MainWindow : Window
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Import Session", () => this.OnImportSession(session)));
                 this.TreeContextMenu.Items.Add(new Separator());
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenFolder(session.WorkingDirectory)));
+                this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(session), inputGestureText: "F2"));
+
+                // No enabled: guard on either View Session* item - both must work even before the
+                // session has ever been launched (the window opens in a "waiting for session to
+                // start..." state and switches to live view once the transcript file appears).
+                this.TreeContextMenu.Items.Add(CreateMenuItem("View Session Log", () => this.sessionLogWindows.ShowOrFocus(session, this, this.costMonitor)));
+                this.TreeContextMenu.Items.Add(CreateMenuItem("View Session Costs", () => this.sessionLogWindows.ShowOrFocus(session, this, this.costMonitor, showCosts: true)));
+                this.TreeContextMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
 
                 // Plain enable/disable (unlike Delete's error-dialog approach) - "Stop while
                 // dormant" needs no explanation, it's just not a currently valid action.
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Stop", () => this.StopSession(session), enabled: session.IsRunning));
-                this.TreeContextMenu.Items.Add(CreateMenuItem("Rename", () => this.OnRename(session), inputGestureText: "F2"));
-
-                var metadataMenu = new MenuItem { Header = "Metadata" };
-                metadataMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
-
-                // No enabled: guard - must work even before the session has ever been launched
-                // (the window opens in a "waiting for session to start..." state and switches to
-                // live view once the transcript file appears).
-                metadataMenu.Items.Add(CreateMenuItem("View Session Log", () => this.sessionLogWindows.ShowOrFocus(session, this, this.costMonitor)));
-                this.TreeContextMenu.Items.Add(metadataMenu);
-
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(session), inputGestureText: "Shift+Del"));
                 break;
         }

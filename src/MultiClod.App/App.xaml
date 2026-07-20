@@ -94,7 +94,15 @@
                 </Setter>
             </Style>
 
-            <Style TargetType="Separator">
+            <!-- Shared by both keys below - the implicit {x:Type Separator} key styles standalone
+                 Separators (e.g. SessionLogWindow's mode-toggle bar), but WPF's Menu/ContextMenu
+                 explicitly assigns MenuItem.SeparatorStyleKey to any Separator placed in their
+                 Items collection (see MenuItem.PrepareContainerForItemOverride), bypassing the
+                 implicit style entirely. Without the second Style below, every context-menu
+                 separator here would silently fall back to the default Aero2 template, whose
+                 Margin reserves a left-hand icon/checkmark gutter - that reserved gutter is what
+                 read as "~25% of the line missing on the left". -->
+            <Style x:Key="AppSeparatorTemplate" TargetType="Separator">
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Separator">
@@ -103,6 +111,8 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+            <Style TargetType="Separator" BasedOn="{StaticResource AppSeparatorTemplate}" />
+            <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator" BasedOn="{StaticResource AppSeparatorTemplate}" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

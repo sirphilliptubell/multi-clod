@@ -36,7 +36,7 @@ public partial class SessionLogWindow : Window
         Costs,
     }
 
-    public SessionLogWindow(SessionNodeViewModel session, SessionCostMonitorService costMonitor)
+    public SessionLogWindow(SessionNodeViewModel session, SessionCostMonitorService costMonitor, bool startInCostsView = false)
     {
         this.InitializeComponent();
 
@@ -61,7 +61,15 @@ public partial class SessionLogWindow : Window
 
         this.StartWatchingSubagents();
         this.SelectMainSession();
-        this.SetViewMode(ViewMode.List);
+        this.SetViewMode(startInCostsView ? ViewMode.Costs : ViewMode.List);
+    }
+
+    // Used by SessionLogWindowRegistry when "View Session Costs" targets a session whose log
+    // window is already open - ShowOrFocus can't pass startInCostsView through the constructor in
+    // that case, since the existing instance is reused rather than recreated.
+    public void ShowCostsView()
+    {
+        this.SetViewMode(ViewMode.Costs);
     }
 
     // Seeded from the session node's own aggregate (already summed across main + all subagent

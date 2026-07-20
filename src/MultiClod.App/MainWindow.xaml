@@ -70,8 +70,7 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                     <Grid x:Name="DoneGlyph" Visibility="Collapsed">
-                        <Ellipse Width="10" Height="10" Fill="Teal" />
-                        <TextBlock Text="&#10003;" FontSize="7" FontWeight="Bold" Foreground="White"
+                        <TextBlock Text="&#10003;" FontSize="9" FontWeight="Bold" Foreground="Orange"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                 </Grid>
@@ -393,8 +392,7 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                     <Grid x:Name="TabDoneGlyph" Visibility="Collapsed">
-                        <Ellipse Width="10" Height="10" Fill="Teal" />
-                        <TextBlock Text="&#10003;" FontSize="7" FontWeight="Bold" Foreground="White"
+                        <TextBlock Text="&#10003;" FontSize="9" FontWeight="Bold" Foreground="Orange"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                 </Grid>
