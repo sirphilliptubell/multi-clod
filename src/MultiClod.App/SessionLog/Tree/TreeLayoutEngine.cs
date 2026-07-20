@@ -11,9 +11,8 @@ internal static class TreeLayoutEngine
 
     public static readonly Metrics DefaultMetrics = new(BoxWidth: 160, BoxHeight: 40, HorizontalGap: 40, VerticalGap: 12, Padding: 24, ConnectorGap: 10);
 
-    // Reuses the existing category accent hues (CategoryToBrushConverter) so Tree connector colors
-    // read as part of the same visual language as the row glyphs/borders.
-    private static readonly string[] ConnectorPalette = ["#3A96DD", "#DA7756", "#9B8AC4", "#D08B2C", "#8A8A8A", "#D9A93A"];
+    // Shared with the Costs view's per-agent color assignment - see SessionLogPalette.
+    private static readonly IReadOnlyList<string> ConnectorPalette = SessionLogPalette.ConnectorPalette;
 
     public static TreeGraph Layout(IReadOnlyList<AgentNode> agents, Metrics metrics)
     {
@@ -178,7 +177,7 @@ internal static class TreeLayoutEngine
                     continue;
                 }
 
-                var color = ConnectorPalette[i % ConnectorPalette.Length];
+                var color = ConnectorPalette[i % ConnectorPalette.Count];
                 var fromY = spawnBox.Y + metrics.BoxHeight * 0.25 + i * metrics.ConnectorGap;
                 var toY = childFirst.Y + metrics.BoxHeight * 0.25;
 

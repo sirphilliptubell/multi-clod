@@ -13,6 +13,7 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
 {
     private bool isExpanded;
     private bool isSourceExpanded;
+    private bool isFlashHighlighted;
     private LineCostDisplay lineCost = LineCostDisplay.None;
 
     protected TranscriptRowViewModel(TranscriptRowCategory category, DateTimeOffset? timestamp)
@@ -26,6 +27,20 @@ public abstract class TranscriptRowViewModel : INotifyPropertyChanged
     public TranscriptRowCategory Category { get; }
 
     public DateTimeOffset? Timestamp { get; }
+
+    // 0-based ordinal of the raw jsonl line this row came from, within its own source file - the
+    // List view's analog of Tree's BoxNode.SourceLineOrdinal, set once by TranscriptRowFactory.
+    // Used by TranscriptViewerControl.ScrollToAndHighlightLine to re-identify a row for the Costs
+    // view's right-click "go to entry" navigation.
+    public int SourceLineOrdinal { get; internal set; }
+
+    // Briefly true right after ScrollToAndHighlightLine locates this row - drives a flash
+    // animation in TranscriptCategoryStyles.xaml's per-category DataTemplates.
+    public bool IsFlashHighlighted
+    {
+        get => this.isFlashHighlighted;
+        set => this.SetField(ref this.isFlashHighlighted, value);
+    }
 
     public abstract string SummaryText { get; }
 

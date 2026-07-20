@@ -27,6 +27,14 @@ public partial class SessionLogWindow : Window
     private string mainSessionFilePath;
     private bool isMainSessionSelected = true;
     private bool isTreeInitialized;
+    private ViewMode currentViewMode = ViewMode.List;
+
+    private enum ViewMode
+    {
+        List,
+        Tree,
+        Costs,
+    }
 
     public SessionLogWindow(SessionNodeViewModel session, SessionCostMonitorService costMonitor)
     {
@@ -42,16 +50,18 @@ public partial class SessionLogWindow : Window
         this.SubagentsListBox.ItemsSource = this.subagents;
         this.session.PropertyChanged += this.OnSessionPropertyChanged;
         this.costMonitor.SubagentFileCostUpdated += this.OnSubagentFileCostUpdated;
+        this.CostsView.NavigateToListRequested += (filePath, lineOrdinal) => this.Dispatcher.Invoke(() => this.NavigateToListEntry(filePath, lineOrdinal));
         this.Closed += (_, _) =>
         {
             this.subagentWatcher?.Dispose();
             this.TreeView.Dispose();
+            this.CostsView.Dispose();
             this.costMonitor.SubagentFileCostUpdated -= this.OnSubagentFileCostUpdated;
         };
 
         this.StartWatchingSubagents();
         this.SelectMainSession();
-        this.SetViewMode(isTreeMode: false);
+        this.SetViewMode(ViewMode.List);
     }
 
     // Seeded from the session node's own aggregate (already summed across main + all subagent
@@ -106,28 +116,68 @@ public partial class SessionLogWindow : Window
 
     private void OnListModeClicked(object sender, RoutedEventArgs e)
     {
-        this.SetViewMode(isTreeMode: false);
+        this.SetViewMode(ViewMode.List);
     }
 
     private void OnTreeModeClicked(object sender, RoutedEventArgs e)
     {
-        this.SetViewMode(isTreeMode: true);
+        this.SetViewMode(ViewMode.Tree);
     }
 
-    private void SetViewMode(bool isTreeMode)
+    private void OnCostsModeClicked(object sender, RoutedEventArgs e)
     {
-        this.ListBodyRoot.Visibility = isTreeMode ? Visibility.Collapsed : Visibility.Visible;
-        this.TreeView.Visibility = isTreeMode ? Visibility.Visible : Visibility.Collapsed;
+        this.SetViewMode(ViewMode.Costs);
+    }
+
+    private void SetViewMode(ViewMode mode)
+    {
+        this.currentViewMode = mode;
+
+        this.ListBodyRoot.Visibility = mode == ViewMode.List ? Visibility.Visible : Visibility.Collapsed;
+        this.TreeView.Visibility = mode == ViewMode.Tree ? Visibility.Visible : Visibility.Collapsed;
+        this.CostsView.Visibility = mode == ViewMode.Costs ? Visibility.Visible : Visibility.Collapsed;
 
         var selectedBrush = new SolidColorBrush(Color.FromRgb(0x28, 0x48, 0x61));
-        this.ListModeButton.Background = isTreeMode ? Brushes.Transparent : selectedBrush;
-        this.TreeModeButton.Background = isTreeMode ? selectedBrush : Brushes.Transparent;
+        this.ListModeButton.Background = mode == ViewMode.List ? selectedBrush : Brushes.Transparent;
+        this.TreeModeButton.Background = mode == ViewMode.Tree ? selectedBrush : Brushes.Transparent;
+        this.CostsModeButton.Background = mode == ViewMode.Costs ? selectedBrush : Brushes.Transparent;
 
-        if (isTreeMode && !this.isTreeInitialized)
+        if (mode == ViewMode.Tree && !this.isTreeInitialized)
         {
             this.isTreeInitialized = true;
             this.TreeView.Initialize(this.mainSessionFilePath, this.GetSessionDir());
         }
+
+        // Unlike List/Tree's lazy-init-once convention, Costs always fully resets (checkboxes,
+        // zoom/pan, "show all events") every time the user switches into it - no lazy guard here.
+        if (mode == ViewMode.Costs)
+        {
+            this.CostsView.Initialize(this.mainSessionFilePath, this.GetSessionDir());
+        }
+    }
+
+    // Navigation target for CostsView's right-click "go to entry in List view" - switches to List
+    // mode, re-points the Viewer at the point's own source (main or the specific subagent), and
+    // scrolls to/flashes the matching row.
+    private void NavigateToListEntry(string filePath, int lineOrdinal)
+    {
+        this.SetViewMode(ViewMode.List);
+
+        if (string.Equals(filePath, this.mainSessionFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            this.SubagentsListBox.SelectedItem = null;
+            this.SelectMainSession();
+        }
+        else
+        {
+            var match = this.subagents.FirstOrDefault(s => string.Equals(s.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                this.SubagentsListBox.SelectedItem = match;
+            }
+        }
+
+        this.Viewer.ScrollToAndHighlightLine(lineOrdinal);
     }
 
     private void OnSubagentDiscovered(SessionLogSourceViewModel source)
@@ -181,6 +231,14 @@ public partial class SessionLogWindow : Window
             if (this.isTreeInitialized)
             {
                 this.TreeView.Initialize(this.mainSessionFilePath, this.GetSessionDir());
+            }
+
+            // Costs has no lazy-once guard to check - it always re-Initializes on the next mode
+            // switch regardless - but if it's the currently VISIBLE mode, it needs to re-point
+            // immediately rather than silently going stale until the user switches away and back.
+            if (this.currentViewMode == ViewMode.Costs)
+            {
+                this.CostsView.Initialize(this.mainSessionFilePath, this.GetSessionDir());
             }
         });
     }
