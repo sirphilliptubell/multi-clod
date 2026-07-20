@@ -557,6 +557,23 @@ public partial class MainWindow : Window
         this.tabDragStartSession = (sender as ListBoxItem)?.DataContext as SessionNodeViewModel;
     }
 
+    // Middle-click closes a tab the same way its X button does (browser/editor convention), without
+    // going through selection first - e.Handled stops the ListBox from also selecting the tab.
+    private void OnTabItemPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if ((sender as FrameworkElement)?.DataContext is SessionNodeViewModel session)
+        {
+            this.CloseTab(session);
+            this.StopSession(session);
+        }
+    }
+
     private void OnTabItemPreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed || this.tabDragStartPoint is not { } start || this.tabDragStartSession is not { } session)
