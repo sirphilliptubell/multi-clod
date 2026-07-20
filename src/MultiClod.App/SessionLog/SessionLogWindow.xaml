@@ -5,6 +5,7 @@
         xmlns:sessionLog="clr-namespace:MultiClod.App.SessionLog"
         xmlns:tree="clr-namespace:MultiClod.App.SessionLog.Tree"
         xmlns:costs="clr-namespace:MultiClod.App.Costs"
+        xmlns:costsView="clr-namespace:MultiClod.App.SessionLog.Costs"
         Title="Session Log" Height="900" Width="1400"
         MaxHeight="{x:Static sys:SystemParameters.PrimaryScreenHeight}"
         MaxWidth="{x:Static sys:SystemParameters.PrimaryScreenWidth}">
@@ -30,6 +31,8 @@
                     Foreground="White" Click="OnListModeClicked" />
             <Button x:Name="TreeModeButton" Content="Tree" Padding="12,6" Margin="4" BorderThickness="0"
                     Foreground="White" Click="OnTreeModeClicked" />
+            <Button x:Name="CostsModeButton" Content="Costs" Padding="12,6" Margin="4" BorderThickness="0"
+                    Foreground="White" Click="OnCostsModeClicked" />
         </StackPanel>
 
         <Grid Grid.Row="1">
@@ -77,6 +80,7 @@
             </Grid>
 
             <tree:SessionTreeView x:Name="TreeView" Visibility="Collapsed" />
+            <costsView:CostsView x:Name="CostsView" Visibility="Collapsed" />
         </Grid>
     </Grid>
 </Window>

@@ -13,6 +13,7 @@ namespace MultiClod.App.SessionLog.Rendering;
 public sealed class TranscriptRowFactory
 {
     private readonly Dictionary<string, ToolCallRowViewModel> pendingToolUses = new();
+    private int nextOrdinal;
 
     /// <summary>
     /// Returns the new rows to append for this line - usually 0 or 1, occasionally more (an
@@ -20,6 +21,18 @@ public sealed class TranscriptRowFactory
     /// mutates that row in place and contributes no new row of its own.
     /// </summary>
     public IReadOnlyList<TranscriptRowViewModel> ProcessLine(string rawLine)
+    {
+        var ordinal = this.nextOrdinal++;
+        var rows = this.ProcessLineCore(rawLine);
+        foreach (var row in rows)
+        {
+            row.SourceLineOrdinal = ordinal;
+        }
+
+        return rows;
+    }
+
+    private IReadOnlyList<TranscriptRowViewModel> ProcessLineCore(string rawLine)
     {
         var parsed = TranscriptLineParser.Parse(rawLine);
         if (!parsed.IsValidJson)

@@ -9,6 +9,15 @@
     <SolidColorBrush x:Key="ToolCallErrorBrush" Color="#C0392B" />
     <FontFamily x:Key="TranscriptIconFontFamily">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
+    <!-- Reuses TreeBoxSelectedBrush's color (TreeBoxStyles.xaml) so a flashed List row reads as
+         the same "this is the highlighted one" language already established by the Tree view's
+         selection color. A dedicated named overlay per row instance - NOT an animation of the
+         template's shared Border.Background - since that Background comes from
+         TranscriptRowBorderStyle's Setter and would either be frozen or shared across every row
+         using the style, so animating it directly would affect every row at once (or fail
+         outright on a frozen brush) instead of just the one row being highlighted. -->
+    <SolidColorBrush x:Key="FlashHighlightBrush" Color="#F0C929" />
+
     <Style x:Key="TranscriptRowBorderStyle" TargetType="Border">
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
@@ -88,8 +97,24 @@
                         <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource TranscriptIconFontFamily}" FontSize="12" />
                     </Button>
                 </StackPanel>
+                <Border x:Name="FlashOverlay" Background="{StaticResource FlashHighlightBrush}" CornerRadius="4" Opacity="0" IsHitTestVisible="False" />
             </Grid>
         </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsFlashHighlighted}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="FlashHighlightStoryboard">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="FlashOverlay" Storyboard.TargetProperty="Opacity"
+                                             From="0" To="0.35" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="2x" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="FlashHighlightStoryboard" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </DataTemplate.Triggers>
     </DataTemplate>
 
     <!-- Thinking rows - de-emphasized (muted/italic) body, distinct from the assistant's visible
@@ -117,8 +142,24 @@
                         <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource TranscriptIconFontFamily}" FontSize="12" />
                     </Button>
                 </StackPanel>
+                <Border x:Name="FlashOverlay" Background="{StaticResource FlashHighlightBrush}" CornerRadius="4" Opacity="0" IsHitTestVisible="False" />
             </Grid>
         </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsFlashHighlighted}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="FlashHighlightStoryboard">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="FlashOverlay" Storyboard.TargetProperty="Opacity"
+                                             From="0" To="0.35" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="2x" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="FlashHighlightStoryboard" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </DataTemplate.Triggers>
     </DataTemplate>
 
     <!-- Tool call rows - accent/glyph color switches to ToolCallErrorBrush once resolved with a
@@ -147,12 +188,26 @@
                         <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource TranscriptIconFontFamily}" FontSize="12" />
                     </Button>
                 </StackPanel>
+                <Border x:Name="FlashOverlay" Background="{StaticResource FlashHighlightBrush}" CornerRadius="4" Opacity="0" IsHitTestVisible="False" />
             </Grid>
         </Border>
         <DataTemplate.Triggers>
             <DataTrigger Binding="{Binding IsError}" Value="True">
                 <Setter TargetName="ToolCallBorder" Property="BorderBrush" Value="{StaticResource ToolCallErrorBrush}" />
                 <Setter TargetName="ToolCallIcon" Property="Foreground" Value="{StaticResource ToolCallErrorBrush}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsFlashHighlighted}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="FlashHighlightStoryboard">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="FlashOverlay" Storyboard.TargetProperty="Opacity"
+                                             From="0" To="0.35" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="2x" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="FlashHighlightStoryboard" />
+                </DataTrigger.ExitActions>
             </DataTrigger>
         </DataTemplate.Triggers>
     </DataTemplate>
@@ -181,8 +236,24 @@
                         <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource TranscriptIconFontFamily}" FontSize="12" />
                     </Button>
                 </StackPanel>
+                <Border x:Name="FlashOverlay" Background="{StaticResource FlashHighlightBrush}" CornerRadius="4" Opacity="0" IsHitTestVisible="False" />
             </Grid>
         </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsFlashHighlighted}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="FlashHighlightStoryboard">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="FlashOverlay" Storyboard.TargetProperty="Opacity"
+                                             From="0" To="0.35" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="2x" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="FlashHighlightStoryboard" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </DataTemplate.Triggers>
     </DataTemplate>
 
     <!-- Unrecognized rows - reserved for actual parse failures only (see UnrecognizedRowViewModel)
@@ -207,8 +278,24 @@
                         <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource TranscriptIconFontFamily}" FontSize="12" />
                     </Button>
                 </StackPanel>
+                <Border x:Name="FlashOverlay" Background="{StaticResource FlashHighlightBrush}" CornerRadius="4" Opacity="0" IsHitTestVisible="False" />
             </Grid>
         </Border>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsFlashHighlighted}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="FlashHighlightStoryboard">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="FlashOverlay" Storyboard.TargetProperty="Opacity"
+                                             From="0" To="0.35" Duration="0:0:0.15" AutoReverse="True" RepeatBehavior="2x" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="FlashHighlightStoryboard" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </DataTemplate.Triggers>
     </DataTemplate>
 
 </ResourceDictionary>

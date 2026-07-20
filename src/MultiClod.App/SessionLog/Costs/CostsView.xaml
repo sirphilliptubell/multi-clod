@@ -1,0 +1,95 @@
+<UserControl x:Class="MultiClod.App.SessionLog.Costs.CostsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:costs="clr-namespace:MultiClod.App.SessionLog.Costs"
+             xmlns:scottplot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF">
+    <Grid Background="#1E1E1E">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" MinWidth="180" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left panel: hierarchical agent tree (mirrors Tree view's parent/child structure),
+             resizable via the GridSplitter below. Resets to all-visible every Initialize. -->
+        <DockPanel Grid.Column="0" Background="#181818">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,6,6,0">
+                <Button x:Name="ShowAllButton" Content="Show All" Padding="8,4" Margin="0,0,4,0" Click="OnShowAllClicked" />
+                <Button x:Name="HideAllButton" Content="Hide All" Padding="8,4" Click="OnHideAllClicked" />
+            </StackPanel>
+            <CheckBox x:Name="ShowAllEventsCheckBox" DockPanel.Dock="Top" Content="Show all events"
+                      Foreground="White" Margin="8,8" Checked="OnShowAllEventsChanged" Unchecked="OnShowAllEventsChanged" />
+            <Separator DockPanel.Dock="Top" Margin="8,0,8,4" />
+            <TreeView x:Name="AgentTree" Background="#181818" BorderThickness="0">
+                <TreeView.Resources>
+                    <HierarchicalDataTemplate DataType="{x:Type costs:CostAgentNode}" ItemsSource="{Binding Children}">
+                        <StackPanel Orientation="Horizontal" Margin="2">
+                            <Rectangle Width="10" Height="10" Fill="{Binding ColorBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding IsVisible}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding DisplayName}" Foreground="White" TextTrimming="CharacterEllipsis"
+                                       MaxWidth="120" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding TotalCostText}" Foreground="#8FBF8F" Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </HierarchicalDataTemplate>
+                </TreeView.Resources>
+            </TreeView>
+        </DockPanel>
+
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#0D0D0D" />
+
+        <!-- Right side: top (cumulative cost) and bottom (delta) plots, X-only pan/zoom kept in
+             lockstep by ApplyXRange in code-behind, plus a read-only model legend and a crosshair
+             tooltip overlaid on the top plot. -->
+        <Grid Grid.Column="2" x:Name="PlotsGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="3*" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <scottplot:WpfPlot x:Name="TopPlot" Grid.Row="0"
+                                MouseWheel="OnMouseWheel"
+                                PreviewMouseLeftButtonDown="OnPreviewMouseLeftButtonDown"
+                                PreviewMouseMove="OnPreviewMouseMove"
+                                PreviewMouseLeftButtonUp="OnPreviewMouseLeftButtonUp"
+                                MouseMove="OnPlotMouseMove"
+                                MouseLeave="OnPlotMouseLeave"
+                                MouseRightButtonUp="OnPlotMouseRightButtonUp" />
+
+            <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="#0D0D0D" />
+
+            <scottplot:WpfPlot x:Name="BottomPlot" Grid.Row="2"
+                                MouseWheel="OnMouseWheel"
+                                PreviewMouseLeftButtonDown="OnPreviewMouseLeftButtonDown"
+                                PreviewMouseMove="OnPreviewMouseMove"
+                                PreviewMouseLeftButtonUp="OnPreviewMouseLeftButtonUp"
+                                MouseMove="OnPlotMouseMove"
+                                MouseLeave="OnPlotMouseLeave"
+                                MouseRightButtonUp="OnPlotMouseRightButtonUp" />
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="4">
+                <Button x:Name="FitAllButton" Content="Fit All" Padding="8,4" Click="OnFitAllClicked" />
+            </StackPanel>
+
+            <ItemsControl x:Name="LegendItemsControl" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Top"
+                          Margin="10" IsHitTestVisible="False" Background="#902A2A2A">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type costs:CostLegendEntry}">
+                        <StackPanel Orientation="Horizontal" Margin="2">
+                            <TextBlock Text="{Binding Glyph}" Foreground="#DDDDDD" Width="18" />
+                            <TextBlock Text="{Binding ModelSlug}" Foreground="#DDDDDD" Margin="4,0" />
+                            <TextBlock Text="{Binding CostText}" Foreground="#8FBF8F" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border x:Name="TooltipBorder" Grid.Row="0" Grid.RowSpan="3" Background="#2A2A2A" BorderBrush="#3A96DD"
+                    BorderThickness="1" CornerRadius="4" Padding="8" HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Visibility="Collapsed" IsHitTestVisible="False">
+                <StackPanel x:Name="TooltipStack" />
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

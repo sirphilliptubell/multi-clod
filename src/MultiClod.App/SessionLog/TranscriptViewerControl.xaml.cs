@@ -41,6 +41,48 @@ public partial class TranscriptViewerControl : UserControl
         this.CommandBindings.Add(new CommandBinding(SessionLogCommands.CopyEntryJson, this.OnCopyEntryJsonExecuted));
     }
 
+    // Locates a row by SourceLineOrdinal (the List view's own analog of Tree's
+    // BoxNode.SourceLineOrdinal), scrolls it into view, and briefly flashes it - the navigation
+    // target for CostsView's right-click "go to entry in List view". A no-op if the ordinal isn't
+    // found (e.g. the source file changed underneath the caller between click and navigation).
+    public void ScrollToAndHighlightLine(int lineOrdinal)
+    {
+        var row = this.rows.FirstOrDefault(r => r.SourceLineOrdinal == lineOrdinal);
+        if (row is null)
+        {
+            return;
+        }
+
+        if (row.Category == TranscriptRowCategory.SystemMeta && !this.showAllEvents)
+        {
+            this.ShowAllEventsCheckBox.IsChecked = true;
+        }
+
+        row.IsExpanded = true;
+
+        this.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (this.RowsItemsControl.ItemContainerGenerator.ContainerFromItem(row) is FrameworkElement container)
+            {
+                container.BringIntoView();
+            }
+
+            this.FlashHighlight(row);
+        }));
+    }
+
+    private void FlashHighlight(TranscriptRowViewModel row)
+    {
+        row.IsFlashHighlighted = true;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            row.IsFlashHighlighted = false;
+        };
+        timer.Start();
+    }
+
     public void SetSource(string? filePath)
     {
         this.tailer?.Dispose();
