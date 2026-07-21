@@ -110,6 +110,12 @@ public sealed class WpfTerminalPane : ITerminalPane
         set => this.control.NewlineOnShiftEnter = value;
     }
 
+    public bool RemapCtrlZForUndo
+    {
+        get => this.control.RemapCtrlZForUndo;
+        set => this.control.RemapCtrlZForUndo = value;
+    }
+
     public void Attach(IPtyConnection connection)
     {
         this.adapter = new WpfTerminalConnectionAdapter(connection);

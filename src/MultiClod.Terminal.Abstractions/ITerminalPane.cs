@@ -20,6 +20,12 @@ public interface ITerminalPane : IDisposable
     /// </summary>
     bool NewlineOnShiftEnter { get; set; }
 
+    /// <summary>
+    /// When true, Ctrl+Z sends Ctrl+_ instead - see TerminalContainer.RemapCtrlZForUndo, which
+    /// this ultimately reaches.
+    /// </summary>
+    bool RemapCtrlZForUndo { get; set; }
+
     void Attach(IPtyConnection connection);
 
     void ApplyTheme(TerminalPaneTheme theme);
