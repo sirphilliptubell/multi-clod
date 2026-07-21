@@ -59,6 +59,21 @@ public partial class SettingsView : UserControl
     /// </summary>
     internal event EventHandler<bool>? ShowCostsChanged;
 
+    /// <summary>
+    /// Raised only in response to the user actually flipping the toggle - MainWindow persists it.
+    /// Only applies to sessions launched after this is changed (it's an env var passed at launch),
+    /// same caveat as DefaultPermissionModeChanged.
+    /// </summary>
+    internal event EventHandler<bool>? DisableMouseCopyChanged;
+
+    /// <summary>
+    /// Raised only in response to the user actually flipping the toggle, with the new value -
+    /// MainWindow persists it and pushes it to every currently-running session's pane, same as
+    /// UseShiftEnterForNewlineChanged (it's a per-pane remap, not an env var passed at launch, so
+    /// it can take effect immediately rather than only on the next new session).
+    /// </summary>
+    internal event EventHandler<bool>? RemapCtrlZForUndoChanged;
+
     internal void LoadSettings(AppSettings settings)
     {
         this.suppressChangeEvents = true;
@@ -66,6 +81,8 @@ public partial class SettingsView : UserControl
         this.DefaultRootFolderBox.Text = settings.DefaultRootFolder ?? string.Empty;
         this.WorktreeToggle.IsChecked = settings.UseWorktreeByDefault;
         this.ShowCostsToggle.IsChecked = settings.ShowCosts;
+        this.DisableMouseCopyToggle.IsChecked = settings.DisableMouseCopy;
+        this.RemapCtrlZForUndoToggle.IsChecked = settings.RemapCtrlZForUndo;
 
         this.PermissionModeCombo.SelectedIndex = settings.DefaultPermissionMode switch
         {
@@ -127,6 +144,26 @@ public partial class SettingsView : UserControl
         }
 
         this.ShowCostsChanged?.Invoke(this, this.ShowCostsToggle.IsChecked == true);
+    }
+
+    private void OnDisableMouseCopyToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (this.suppressChangeEvents)
+        {
+            return;
+        }
+
+        this.DisableMouseCopyChanged?.Invoke(this, this.DisableMouseCopyToggle.IsChecked == true);
+    }
+
+    private void OnRemapCtrlZForUndoToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (this.suppressChangeEvents)
+        {
+            return;
+        }
+
+        this.RemapCtrlZForUndoChanged?.Invoke(this, this.RemapCtrlZForUndoToggle.IsChecked == true);
     }
 
     private void OnPermissionModeSelectionChanged(object sender, SelectionChangedEventArgs e)

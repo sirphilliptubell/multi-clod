@@ -167,6 +167,24 @@
                 <TextBlock Text="Show estimated costs" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock Text="Shows estimated Claude API cost next to session names, in the Session Log window, and per transcript entry."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,16" />
+
+            <TextBlock Text="Terminal" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="12" FontWeight="Bold" Margin="0,4,0,8" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ToggleButton x:Name="DisableMouseCopyToggle" Style="{StaticResource ToggleSwitchStyle}"
+                              Click="OnDisableMouseCopyToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="Disable Mouse Copy" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="When on, dragging or double-clicking in a session only highlights text - Claude Code's own mouse-driven auto-copy is disabled, so Ctrl+C is the only thing that touches the clipboard. Turning this off also restores any other mouse interaction inside the CLI. Only applies to sessions launched after this is changed."
+                       Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,16" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ToggleButton x:Name="RemapCtrlZForUndoToggle" Style="{StaticResource ToggleSwitchStyle}"
+                              Click="OnRemapCtrlZForUndoToggleClick" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <TextBlock Text="Ctrl+Z triggers undo" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="Claude Code's CLI reserves Ctrl+Z for Unix process-suspend and binds its own undo to Ctrl+_/Ctrl+Shift+- instead, so plain Ctrl+Z does nothing there. When on, Ctrl+Z sends Ctrl+_'s byte instead, so undo works without needing to learn a different shortcut. Applies to already-running sessions immediately."
                        Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="52,0,0,0" />
         </StackPanel>
         </ScrollViewer>

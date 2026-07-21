@@ -82,6 +82,16 @@ namespace Microsoft.Terminal.Wpf
         }
 
         /// <summary>
+        /// Gets or sets a value indicating whether Ctrl+Z sends Ctrl+_ instead. See
+        /// TerminalContainer.RemapCtrlZForUndo.
+        /// </summary>
+        public bool RemapCtrlZForUndo
+        {
+            get => this.termContainer.RemapCtrlZForUndo;
+            set => this.termContainer.RemapCtrlZForUndo = value;
+        }
+
+        /// <summary>
         /// Gets size of the terminal renderer.
         /// </summary>
         private Size TerminalRendererSize

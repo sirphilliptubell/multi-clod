@@ -51,4 +51,25 @@ public sealed record AppSettings
     /// cost visibility is the feature's whole point rather than an opt-in convenience.
     /// </summary>
     public bool ShowCosts { get; init; } = true;
+
+    /// <summary>
+    /// Passes CLAUDE_CODE_DISABLE_MOUSE=1 to a brand-new session's `claude` process - see
+    /// MainWindow.LaunchSession. Claude Code's own TUI otherwise enables terminal mouse-reporting
+    /// and auto-copies a dragged/double-clicked selection via an OSC 52 escape sequence, with no
+    /// setting yet to opt out of just that (github.com/anthropics/claude-code/issues/60755) -
+    /// disabling mouse-reporting entirely is the only lever available today, and it also gives up
+    /// any other mouse interaction inside the CLI, so this defaults to off (false) rather than
+    /// silently changing everyone's terminal behavior.
+    /// </summary>
+    public bool DisableMouseCopy { get; init; }
+
+    /// <summary>
+    /// Remaps Ctrl+Z to send Ctrl+_ instead, in every session's terminal - see
+    /// TerminalContainer.RemapCtrlZForUndo. Claude Code's CLI reserves Ctrl+Z for Unix
+    /// process-suspend (a no-op on Windows) and binds its own undo to Ctrl+_/Ctrl+Shift+-
+    /// instead, so plain Ctrl+Z otherwise does nothing useful there. Defaults to true - unlike
+    /// this file's other opt-in booleans, there's no real downside to remapping a key Windows
+    /// sessions have no other use for.
+    /// </summary>
+    public bool RemapCtrlZForUndo { get; init; } = true;
 }
