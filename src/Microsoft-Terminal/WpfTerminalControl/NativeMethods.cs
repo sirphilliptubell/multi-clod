@@ -7,6 +7,7 @@ namespace Microsoft.Terminal.Wpf
 {
     using System;
     using System.Runtime.InteropServices;
+    using System.Text;
 
 #pragma warning disable SA1600 // Elements should be documented
     internal static class NativeMethods
@@ -90,6 +91,11 @@ namespace Microsoft.Terminal.Wpf
             /// The WM_MOUSEWHEEL message is sent to the focus window when the mouse wheel is rotated. The DefWindowProc function propagates the message to the window's parent. There should be no internal forwarding of the message, since DefWindowProc propagates it up the parent chain until it finds a window that processes it.
             /// </summary>
             WM_MOUSEWHEEL = 0x020A,
+
+            /// <summary>
+            /// The WM_DROPFILES message is sent when the user drops a file on a window that has registered itself as a drop target with DragAcceptFiles.
+            /// </summary>
+            WM_DROPFILES = 0x0233,
         }
 
         [Flags]
@@ -233,6 +239,25 @@ namespace Microsoft.Terminal.Wpf
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetFocus(IntPtr hWnd);
+
+        // Old-style shell drag-and-drop (as opposed to WPF's OLE-based DragDrop, which is
+        // registered per top-level HwndSource and never sees drops over a hosted child hwnd like
+        // this terminal's): opting a native hwnd into this via DragAcceptFiles is what makes it
+        // receive WM_DROPFILES directly, regardless of what the WPF ancestor's AllowDrop is set to.
+        [DllImport("shell32.dll")]
+        public static extern void DragAcceptFiles(IntPtr hWnd, [MarshalAs(UnmanagedType.Bool)] bool fAccept);
+
+        // Two overloads of the same native DragQueryFile, differing only in the marshaled type of
+        // lpszFile: pass IntPtr.Zero to size the buffer (lpszFile == null means "return required
+        // length"), then StringBuilder to actually fill it.
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "DragQueryFileW")]
+        public static extern uint DragQueryFile(IntPtr hDrop, uint iFile, IntPtr lpszFile, uint cch);
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "DragQueryFileW")]
+        public static extern uint DragQueryFile(IntPtr hDrop, uint iFile, StringBuilder lpszFile, uint cch);
+
+        [DllImport("shell32.dll")]
+        public static extern void DragFinish(IntPtr hDrop);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct WINDOWPOS
