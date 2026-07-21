@@ -36,7 +36,6 @@ namespace Microsoft.Terminal.Wpf
 
         private const ushort VkReturn = 0x0D;
 
-<<<<<<< HEAD
         // Kept as a named char rather than embedded literally in the escape-sequence string
         // constants below - an actual ESC (0x1B) byte sitting invisibly in source is exactly the
         // kind of thing a diff/editor/encoding round-trip silently mangles.
@@ -48,14 +47,9 @@ namespace Microsoft.Terminal.Wpf
         private static readonly string BracketedPasteDisableSequence = Esc + "[?2004l";
 
         private static readonly string[] PastableImageExtensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp" };
-=======
-        // Standard "bracketed paste" markers (xterm convention) - see PasteFromClipboard's remarks.
-        private const string BracketedPasteStart = "\x1b[200~";
-        private const string BracketedPasteEnd = "\x1b[201~";
 
         // What a real Ctrl+_ sends - see RemapCtrlZForUndo's WM_KEYDOWN case.
         private static readonly string UnitSeparator = ((char)0x1F).ToString();
->>>>>>> origin/main
 
         private ITerminalConnection connection;
         private IntPtr hwnd;
@@ -693,16 +687,7 @@ namespace Microsoft.Terminal.Wpf
 
             if (!string.IsNullOrEmpty(text))
             {
-<<<<<<< HEAD
                 this.WriteSyntheticInput(text);
-=======
-                // Wrapping in the standard "bracketed paste" markers lets the hosted Claude Code
-                // CLI (every session here launches it - see MainWindow.LaunchSession) tell a paste
-                // apart from typed input, same as a real terminal (Windows Terminal, iTerm2, etc.)
-                // would. Without this the CLI can't recognize the burst of text as one atomic
-                // paste, so it never collapses it into its own "[Pasted text #N +M lines]"
-                // placeholder and instead treats embedded newlines as individual Enter presses.
-                this.Connection?.WriteInput(BracketedPasteStart + text + BracketedPasteEnd);
             }
         }
 
@@ -716,7 +701,6 @@ namespace Microsoft.Terminal.Wpf
             }
             catch (COMException)
             {
->>>>>>> origin/main
             }
         }
 
