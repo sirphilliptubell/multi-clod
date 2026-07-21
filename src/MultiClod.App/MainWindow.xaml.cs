@@ -37,7 +37,7 @@ public partial class MainWindow : Window
     private AppSettings appSettings;
     private readonly ClaudeSessionHooksInstaller hooksInstaller;
     private readonly ShiftDeleteHook shiftDeleteHook;
-    private readonly TerminalArrowKeyRoutingHook arrowKeyRoutingHook;
+    private readonly TerminalKeyRoutingHook terminalKeyRoutingHook;
     private readonly UndoRedoShortcutHook undoRedoHook;
     private readonly SessionLogWindowRegistry sessionLogWindows = new();
 
@@ -189,6 +189,8 @@ public partial class MainWindow : Window
         this.SettingsView.DefaultPermissionModeChanged += this.OnDefaultPermissionModeChanged;
         this.SettingsView.ThemeChanged += this.OnThemeChanged;
         this.SettingsView.ShowCostsChanged += this.OnShowCostsChanged;
+        this.SettingsView.DisableMouseCopyChanged += this.OnDisableMouseCopyChanged;
+        this.SettingsView.RemapCtrlZForUndoChanged += this.OnRemapCtrlZForUndoChanged;
 
         // Only trigger for a save that came from the Context tree (see
         // OnMarkdownEditorDocumentSaved) - saving a Skill doesn't need the Context tree rebuilt.
@@ -207,11 +209,11 @@ public partial class MainWindow : Window
         // which the Tree's own KeyDown handler (OnTreeKeyDown) cannot - see ShiftDeleteHook.
         this.shiftDeleteHook = new ShiftDeleteHook(this.OnDeleteShortcut);
 
-        // Keeps arrow keys from leaking to the Tree while a terminal session has real Win32
-        // focus - see TerminalArrowKeyRoutingHook's remarks. The hwnd getter is lazy (evaluated
-        // per keystroke, not captured here) because this window's own hwnd doesn't exist yet
-        // until WPF creates it later during Show()/OnSourceInitialized.
-        this.arrowKeyRoutingHook = new TerminalArrowKeyRoutingHook(() => new WindowInteropHelper(this).Handle);
+        // Keeps arrow keys and Ctrl+C/Ctrl+Z/Ctrl+Y from leaking to the Tree while a terminal
+        // session has real Win32 focus - see TerminalKeyRoutingHook's remarks. The hwnd getter is
+        // lazy (evaluated per keystroke, not captured here) because this window's own hwnd
+        // doesn't exist yet until WPF creates it later during Show()/OnSourceInitialized.
+        this.terminalKeyRoutingHook = new TerminalKeyRoutingHook(() => new WindowInteropHelper(this).Handle);
 
         // Same rationale as shiftDeleteHook above - Ctrl+Z/Ctrl+Y need to reach the tree's undo
         // stack even while a terminal owns native focus. See UndoRedoShortcutHook's remarks for
@@ -278,6 +280,7 @@ public partial class MainWindow : Window
         var host = new WpfSessionHost();
         host.Pane.ApplyTheme(ThemeManager.GetTerminalTheme(this.appSettings.Theme));
         host.Pane.NewlineOnShiftEnter = this.appSettings.UseShiftEnterForNewline;
+        host.Pane.RemapCtrlZForUndo = this.appSettings.RemapCtrlZForUndo;
         host.Pane.Title = node.DisplayTitle;
 
         // Added to the shared container exactly once, here, for this host's entire lifetime -
@@ -297,7 +300,16 @@ public partial class MainWindow : Window
         // every later launch passes --resume for that same id to reopen the same conversation.
         // HasBeenStarted is what remembers which one we're on, since both flags take the same GUID.
         var flag = node.HasBeenStarted ? "--resume" : "--session-id";
-        var commandLine = $"cmd.exe /c claude {flag} {node.ClaudeSessionId}";
+
+        // Claude Code's own TUI otherwise enables terminal mouse-reporting and auto-copies a
+        // dragged/double-clicked selection to the OS clipboard via an OSC 52 escape sequence, with
+        // no setting yet to opt out of just that (github.com/anthropics/claude-code/issues/60755) -
+        // disabling mouse-reporting entirely is the only lever available today, hence this being
+        // opt-out (Settings) rather than always-on. With it on, mouse selection stays local to the
+        // terminal (highlight only, no escape codes sent to the CLI), and Ctrl+C (see
+        // TerminalContainer's WM_KEYDOWN handling) is the only thing that touches the clipboard.
+        var mousePrefix = this.appSettings.DisableMouseCopy ? "set CLAUDE_CODE_DISABLE_MOUSE=1 && " : string.Empty;
+        var commandLine = $"cmd.exe /c {mousePrefix}claude {flag} {node.ClaudeSessionId}";
 
         // Only ever applies to sessions launched through multi-clod - a claude session started
         // any other way never sees this flag, so the hooks it wires up (see
@@ -573,6 +585,23 @@ public partial class MainWindow : Window
         this.tabDragStartSession = (sender as ListBoxItem)?.DataContext as SessionNodeViewModel;
     }
 
+    // Middle-click closes a tab the same way its X button does (browser/editor convention), without
+    // going through selection first - e.Handled stops the ListBox from also selecting the tab.
+    private void OnTabItemPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if ((sender as FrameworkElement)?.DataContext is SessionNodeViewModel session)
+        {
+            this.CloseTab(session);
+            this.StopSession(session);
+        }
+    }
+
     private void OnTabItemPreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed || this.tabDragStartPoint is not { } start || this.tabDragStartSession is not { } session)
@@ -803,6 +832,31 @@ public partial class MainWindow : Window
         // one flag (via CostVisibilityConverter) - setting it here is the entire live-push, no
         // per-session/per-window loop needed like OnUseShiftEnterForNewlineChanged's.
         CostDisplaySettings.Instance.ShowCosts = showCosts;
+    }
+
+    // No live push to already-running sessions - like DefaultPermissionModeChanged, this is only
+    // read by LaunchSession at the moment a brand-new claude process is started.
+    private void OnDisableMouseCopyChanged(object? sender, bool disableMouseCopy)
+    {
+        this.appSettings = this.appSettings with { DisableMouseCopy = disableMouseCopy };
+        this.settingsStore.Save(this.appSettings);
+    }
+
+    private void OnRemapCtrlZForUndoChanged(object? sender, bool remapCtrlZForUndo)
+    {
+        this.appSettings = this.appSettings with { RemapCtrlZForUndo = remapCtrlZForUndo };
+        this.settingsStore.Save(this.appSettings);
+
+        // Unlike DisableMouseCopy (an env var only read at launch), this is a per-pane remap
+        // TerminalContainer applies live - same push-to-already-running-sessions pattern as
+        // OnUseShiftEnterForNewlineChanged.
+        foreach (var node in this.controller.AllSessionNodes())
+        {
+            if (node.LiveSession is { } session)
+            {
+                session.Host.Pane.RemapCtrlZForUndo = remapCtrlZForUndo;
+            }
+        }
     }
 
     private void OnThemeChanged(object? sender, AppTheme theme)
@@ -1557,7 +1611,7 @@ public partial class MainWindow : Window
         this.costMonitor.Dispose();
 
         this.shiftDeleteHook.Dispose();
-        this.arrowKeyRoutingHook.Dispose();
+        this.terminalKeyRoutingHook.Dispose();
         this.undoRedoHook.Dispose();
 
         if (Application.Current is App app)

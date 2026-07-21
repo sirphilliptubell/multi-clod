@@ -6,12 +6,17 @@
 namespace Microsoft.Terminal.Wpf
 {
     using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
     using System.Runtime.InteropServices;
+    using System.Text;
     using System.Windows;
     using System.Windows.Automation.Peers;
     using System.Windows.Input;
     using System.Windows.Interop;
     using System.Windows.Media;
+    using System.Windows.Media.Imaging;
 
     /// <summary>
     /// The container class that hosts the native hwnd terminal.
@@ -26,8 +31,25 @@ namespace Microsoft.Terminal.Wpf
         // without this, Ctrl+V falls through as the raw control character 0x16, which most shells
         // interpret as "quoted insert" rather than a paste.
         private const ushort VkV = 0x56;
+        private const ushort VkC = 0x43;
+        private const ushort VkZ = 0x5A;
 
         private const ushort VkReturn = 0x0D;
+
+        // Kept as a named char rather than embedded literally in the escape-sequence string
+        // constants below - an actual ESC (0x1B) byte sitting invisibly in source is exactly the
+        // kind of thing a diff/editor/encoding round-trip silently mangles.
+        private const char Esc = (char)0x1B;
+
+        private static readonly string BracketedPasteStart = Esc + "[200~";
+        private static readonly string BracketedPasteEnd = Esc + "[201~";
+        private static readonly string BracketedPasteEnableSequence = Esc + "[?2004h";
+        private static readonly string BracketedPasteDisableSequence = Esc + "[?2004l";
+
+        private static readonly string[] PastableImageExtensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp" };
+
+        // What a real Ctrl+_ sends - see RemapCtrlZForUndo's WM_KEYDOWN case.
+        private static readonly string UnitSeparator = ((char)0x1F).ToString();
 
         private ITerminalConnection connection;
         private IntPtr hwnd;
@@ -35,7 +57,10 @@ namespace Microsoft.Terminal.Wpf
         private NativeMethods.ScrollCallback scrollCallback;
         private NativeMethods.WriteCallback writeCallback;
         private bool suppressNextCtrlVChar;
+        private bool suppressNextCtrlCChar;
+        private bool suppressNextCtrlLetterChar;
         private bool suppressNextEnterChar;
+        private bool bracketedPasteModeEnabled;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TerminalContainer"/> class.
@@ -84,6 +109,15 @@ namespace Microsoft.Terminal.Wpf
         /// escape-sequence guessing about what the connected process expects is needed.
         /// </summary>
         internal bool NewlineOnShiftEnter { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether Ctrl+Z sends whatever a real Ctrl+_ (0x1F,
+        /// Unit Separator) would, instead of Ctrl+Z's own control character (0x1A) - see the
+        /// WM_KEYDOWN case's remarks for why: Claude Code's CLI reserves Ctrl+Z for Unix
+        /// process-suspend and binds undo to Ctrl+_/Ctrl+Shift+- instead, so plain Ctrl+Z has no
+        /// effect there.
+        /// </summary>
+        internal bool RemapCtrlZForUndo { get; set; }
 
         /// <summary>
         /// Gets or sets the size of the parent user control that hosts the terminal hwnd.
@@ -316,6 +350,12 @@ namespace Microsoft.Terminal.Wpf
             var dpiScale = VisualTreeHelper.GetDpi(this);
             NativeMethods.CreateTerminal(hwndParent.Handle, out this.hwnd, out this.terminal);
 
+            // Opts this native child hwnd into old-style shell drag-and-drop (WM_DROPFILES), so
+            // dropping an image file from Explorer directly onto the terminal works the same way
+            // Ctrl+V-pasting one does - see the DragAcceptFiles P/Invoke comment for why WPF's own
+            // AllowDrop mechanism can't reach here.
+            NativeMethods.DragAcceptFiles(this.hwnd, true);
+
             this.scrollCallback = this.OnScroll;
             this.writeCallback = this.OnWrite;
 
@@ -354,6 +394,58 @@ namespace Microsoft.Terminal.Wpf
             character = (char)vKey;
         }
 
+        private static string TryGetSingleCopiedImageFilePath()
+        {
+            if (!Clipboard.ContainsFileDropList())
+            {
+                return null;
+            }
+
+            var files = Clipboard.GetFileDropList();
+            if (files.Count != 1)
+            {
+                return null;
+            }
+
+            string path = files[0];
+            if (path == null || Array.IndexOf(PastableImageExtensions, Path.GetExtension(path).ToLowerInvariant()) < 0)
+            {
+                return null;
+            }
+
+            return path;
+        }
+
+        private static string TrySaveClipboardImageToTempFile()
+        {
+            if (Clipboard.GetImage() is not { } image)
+            {
+                return null;
+            }
+
+            string path = Path.Combine(Path.GetTempPath(), $"multi-clod-paste-{Guid.NewGuid():N}.png");
+
+            try
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+
+                using var stream = File.Create(path);
+                encoder.Save(stream);
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+
+            return path;
+        }
+
+        private static string QuoteIfNeeded(string path)
+        {
+            return path.Contains(' ') ? $"\"{path}\"" : path;
+        }
+
         private void TerminalContainer_GotFocus(object sender, RoutedEventArgs e)
         {
             e.Handled = true;
@@ -385,6 +477,54 @@ namespace Microsoft.Terminal.Wpf
                             {
                                 this.PasteFromClipboard();
                                 this.suppressNextCtrlVChar = true;
+                                handled = true;
+                                break;
+                            }
+
+                            // Mirrors real terminal convention (Windows Terminal, etc.): Ctrl+C
+                            // copies the active selection instead of sending an interrupt, since
+                            // that's almost always what a selection means the user wants. With no
+                            // selection, Ctrl+C isn't special-cased here at all - it falls through
+                            // to the generic TerminalSendKeyEvent call below like any other key,
+                            // same as it always has, so the shell still gets its interrupt.
+                            if (vkey == VkC && Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && this.GetSelectedText() is { Length: > 0 } selectedText)
+                            {
+                                this.CopyToClipboard(selectedText);
+                                this.suppressNextCtrlCChar = true;
+                                handled = true;
+                                break;
+                            }
+
+                            // Claude Code's CLI reserves Ctrl+Z for Unix process-suspend (a no-op
+                            // on Windows) and binds its own undo to Ctrl+_/Ctrl+Shift+- instead -
+                            // so plain Ctrl+Z's own control character (sent by the generic
+                            // Ctrl+<letter> case below) has no effect there. When opted in (see
+                            // AppSettings.RemapCtrlZForUndo), send Ctrl+_'s byte (0x1F, Unit
+                            // Separator) instead - written directly to the connection rather than
+                            // through the terminal core, same as Ctrl+V/Shift+Enter above, since a
+                            // plain control character's byte never depends on terminal mode.
+                            if (vkey == VkZ && Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && this.RemapCtrlZForUndo)
+                            {
+                                this.Connection?.WriteInput(UnitSeparator);
+                                this.suppressNextCtrlLetterChar = true;
+                                handled = true;
+                                break;
+                            }
+
+                            // Every other Ctrl+<letter> (plus Ctrl+Z itself when the remap above
+                            // is off) needs its control character (the standard ASCII mapping -
+                            // vkey & 0x1F, e.g. Ctrl+Z -> 0x1A) delivered explicitly, not left to a
+                            // WM_CHAR TranslateMessage would normally generate: TerminalKeyRoutingHook
+                            // redelivers these WM_KEYDOWNs via a direct SendMessage that bypasses
+                            // TranslateMessage entirely (see its remarks), so nothing else would
+                            // ever produce that WM_CHAR. Sending both the key and char events here,
+                            // then suppressing whatever WM_CHAR (if any) still follows below, keeps
+                            // this correct on either path.
+                            if (vkey is >= 0x41 and <= 0x5A && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+                            {
+                                NativeMethods.TerminalSendKeyEvent(this.terminal, vkey, scanCode, flags, true);
+                                NativeMethods.TerminalSendCharEvent(this.terminal, (char)(vkey & 0x1F), scanCode, flags);
+                                this.suppressNextCtrlLetterChar = true;
                                 handled = true;
                                 break;
                             }
@@ -426,6 +566,26 @@ namespace Microsoft.Terminal.Wpf
                             if (this.suppressNextCtrlVChar)
                             {
                                 this.suppressNextCtrlVChar = false;
+                                handled = true;
+                                break;
+                            }
+
+                            // Swallows the ETX (0x03) TranslateMessage generates for the Ctrl+C
+                            // keydown already handled (as a clipboard copy) in WM_KEYDOWN above.
+                            if (this.suppressNextCtrlCChar)
+                            {
+                                this.suppressNextCtrlCChar = false;
+                                handled = true;
+                                break;
+                            }
+
+                            // Swallows whatever control character TranslateMessage generates for
+                            // the Ctrl+<letter> keydown already handled explicitly in WM_KEYDOWN
+                            // above (only reachable on a path where TranslateMessage still ran -
+                            // see that case's remarks).
+                            if (this.suppressNextCtrlLetterChar)
+                            {
+                                this.suppressNextCtrlLetterChar = false;
                                 handled = true;
                                 break;
                             }
@@ -479,6 +639,11 @@ namespace Microsoft.Terminal.Wpf
                         var delta = (short)(((long)wParam) >> 16);
                         this.UserScrolled?.Invoke(this, delta);
                         break;
+
+                    case NativeMethods.WindowMessage.WM_DROPFILES:
+                        this.HandleDropFiles(wParam);
+                        handled = true;
+                        break;
                 }
             }
 
@@ -491,7 +656,28 @@ namespace Microsoft.Terminal.Wpf
             try
             {
                 // Clipboard access can throw intermittently (e.g. another process briefly owns it);
-                // treat that as "nothing to paste" rather than letting it bubble up and crash the app.
+                // that's caught below and treated as "nothing to paste" rather than crashing the app.
+
+                // Mirrors Windows Terminal's "paste image as path" behavior, which is what lets a CLI
+                // like Claude Code pick up a pasted image at all: neither conpty nor this vendored
+                // control has any way to transmit raw image bytes to the connected process, so the
+                // only way an image on the clipboard can reach it is as a file path typed at the
+                // prompt. An actual file copied in Explorer already has a real path - reuse it rather
+                // than re-encoding a redundant temp copy. A screenshot or an image copied from a
+                // browser/editor only exists as bitmap data, so that has to be written to a new temp
+                // file first.
+                if (TryGetSingleCopiedImageFilePath() is { } droppedImagePath)
+                {
+                    this.WriteSyntheticInput(QuoteIfNeeded(droppedImagePath));
+                    return;
+                }
+
+                if (Clipboard.ContainsImage() && TrySaveClipboardImageToTempFile() is { } savedImagePath)
+                {
+                    this.WriteSyntheticInput(QuoteIfNeeded(savedImagePath));
+                    return;
+                }
+
                 text = Clipboard.ContainsText() ? Clipboard.GetText() : string.Empty;
             }
             catch (COMException)
@@ -501,8 +687,75 @@ namespace Microsoft.Terminal.Wpf
 
             if (!string.IsNullOrEmpty(text))
             {
-                this.Connection?.WriteInput(text);
+                this.WriteSyntheticInput(text);
             }
+        }
+
+        private void CopyToClipboard(string text)
+        {
+            try
+            {
+                // Clipboard access can throw intermittently (e.g. another process briefly owns
+                // it) - same tolerance as PasteFromClipboard, just for the write side.
+                Clipboard.SetText(text);
+            }
+            catch (COMException)
+            {
+            }
+        }
+
+        private void HandleDropFiles(IntPtr hDrop)
+        {
+            try
+            {
+                uint fileCount = NativeMethods.DragQueryFile(hDrop, 0xFFFFFFFFu, IntPtr.Zero, 0);
+                var imagePaths = new List<string>();
+
+                for (uint i = 0; i < fileCount; i++)
+                {
+                    uint length = NativeMethods.DragQueryFile(hDrop, i, IntPtr.Zero, 0);
+                    var buffer = new StringBuilder((int)length + 1);
+                    NativeMethods.DragQueryFile(hDrop, i, buffer, (uint)buffer.Capacity);
+
+                    string path = buffer.ToString();
+                    if (Array.IndexOf(PastableImageExtensions, Path.GetExtension(path).ToLowerInvariant()) >= 0)
+                    {
+                        imagePaths.Add(path);
+                    }
+                }
+
+                if (imagePaths.Count > 0)
+                {
+                    this.WriteSyntheticInput(string.Join(' ', imagePaths.Select(QuoteIfNeeded)));
+                }
+            }
+            finally
+            {
+                NativeMethods.DragFinish(hDrop);
+            }
+        }
+
+        // A raw Connection.WriteInput doesn't tell the connected process that these bytes came from
+        // a paste/drop rather than being typed - so a CLI that only collapses pasted image paths
+        // into a "[Image #1]"-style placeholder when it recognizes an actual paste event (e.g. one
+        // built with Ink, which detects paste via bracketed-paste mode: https://cirw.in/blog/bracketed-paste)
+        // would otherwise just see ordinary keystrokes and leave the raw path sitting in the
+        // prompt. Wrapping in the bracketed-paste markers - but only once the app has actually
+        // opted in via DECSET 2004, mirrored by watching output for that sequence below - reproduces
+        // what a real paste/drop looks like to it.
+        private void WriteSyntheticInput(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (this.bracketedPasteModeEnabled)
+            {
+                text = BracketedPasteStart + text + BracketedPasteEnd;
+            }
+
+            this.Connection?.WriteInput(text);
         }
 
         private void Connection_TerminalOutput(object sender, TerminalOutputEventArgs e)
@@ -510,6 +763,18 @@ namespace Microsoft.Terminal.Wpf
             if (this.terminal == IntPtr.Zero || string.IsNullOrEmpty(e.Data))
             {
                 return;
+            }
+
+            // The vendored native terminal core tracks VT modes like this internally (it has to, to
+            // render correctly) but exports no way to query them, so bracketed-paste state is
+            // tracked independently here by scanning the same output for the enable/disable
+            // sequence. Best-effort: a sequence split across two separate output writes would be
+            // missed, but in practice a CLI emits this once per prompt, well within a single chunk.
+            int enableIndex = e.Data.LastIndexOf(BracketedPasteEnableSequence, StringComparison.Ordinal);
+            int disableIndex = e.Data.LastIndexOf(BracketedPasteDisableSequence, StringComparison.Ordinal);
+            if (enableIndex >= 0 || disableIndex >= 0)
+            {
+                this.bracketedPasteModeEnabled = enableIndex > disableIndex;
             }
 
             NativeMethods.TerminalSendOutput(this.terminal, e.Data);

@@ -436,6 +436,7 @@
             <Setter Property="Foreground" Value="White" />
             <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnTabItemPreviewMouseLeftButtonDown" />
             <EventSetter Event="PreviewMouseMove" Handler="OnTabItemPreviewMouseMove" />
+            <EventSetter Event="PreviewMouseDown" Handler="OnTabItemPreviewMouseDown" />
             <Setter Property="AllowDrop" Value="True" />
             <EventSetter Event="DragOver" Handler="OnTabItemDragOver" />
             <EventSetter Event="Drop" Handler="OnTabItemDrop" />
