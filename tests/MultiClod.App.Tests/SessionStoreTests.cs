@@ -33,6 +33,29 @@ public sealed class SessionStoreTests
     }
 
     [Test]
+    public async Task RoundTrip_SaveThenLoad_PersistsLastActivity()
+    {
+        var scratchDir = CreateScratchDirectory();
+        try
+        {
+            var file = SampleFile();
+            file.Sessions[0].LastActivity = SessionActivity.NeedsInput;
+
+            var store = new SessionStore(scratchDir);
+            store.ScheduleSave(file);
+            store.Flush();
+
+            var loaded = new SessionStore(scratchDir).Load();
+
+            await Assert.That(loaded.Sessions[0].LastActivity).IsEqualTo(SessionActivity.NeedsInput);
+        }
+        finally
+        {
+            DeleteScratchDirectory(scratchDir);
+        }
+    }
+
+    [Test]
     public async Task Load_NoFileYet_ReturnsEmptyFile()
     {
         var scratchDir = CreateScratchDirectory();

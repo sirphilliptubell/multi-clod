@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 
 namespace MultiClod.App.Persistence;
@@ -21,6 +22,12 @@ public sealed class SessionStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+
+        // SessionRecord.LastActivity is the first enum this file stores - written as its name
+        // rather than a bare ordinal so a future reordering of the SessionActivity enum can't
+        // silently change what an already-saved sessions.json means. Matches AppSettingsStore's
+        // own JsonOptions.
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
     private readonly string dataDirectory;

@@ -27,6 +27,9 @@ public interface ISessionHost : IDisposable
 
     event EventHandler<string> TitleChanged;
 
+    // Passthrough of the underlying IPtyConnection.InterruptDetected - see its remarks.
+    event EventHandler InterruptDetected;
+
     void Start(TerminalLaunchOptions options);
 
     void Stop();

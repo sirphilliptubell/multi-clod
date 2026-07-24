@@ -298,7 +298,7 @@ public partial class MainWindow : Window
         // Constructed (and subscribed to host.StateChanged) before Start() runs - Start() fires
         // Starting/Running synchronously, so creating this after Start() would miss both events
         // and leave the node's spinner stuck on "Starting" forever.
-        var session = new TerminalSession(node.WorkingDirectory, host);
+        var session = new TerminalSession(node.WorkingDirectory, host, node.LastActivity);
 
         // --session-id pre-assigns this node's conversation identity on its first-ever launch;
         // every later launch passes --resume for that same id to reopen the same conversation.
@@ -389,6 +389,14 @@ public partial class MainWindow : Window
                     {
                         SessionActivitySounds.PlayDone();
                     }
+                }
+
+                // Working itself is never persisted (see SessionRecord.LastActivity's remarks) -
+                // only save once node.LastActivity has actually settled onto something new, so a
+                // relaunch/restart shows the same glyph this session was left in.
+                if (session.Activity != SessionActivity.Working)
+                {
+                    this.controller.ScheduleSave();
                 }
             }
             else if (e.PropertyName == nameof(TerminalSession.State) && session.State == SessionState.Faulted)

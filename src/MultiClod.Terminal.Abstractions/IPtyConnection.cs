@@ -15,6 +15,13 @@ public interface IPtyConnection : IDisposable
     // via OutputReceived.
     event EventHandler<string> TitleChanged;
 
+    // Raised when the child process's own screen output contains the literal text Claude Code's
+    // CLI prints when a turn is cancelled (see ConPtyConnection.ScanForInterruptMarker) - a
+    // best-effort text scan, not a structured signal like TitleChanged, since Claude Code's Stop
+    // hook never fires for a user-interrupted (e.g. Escape) turn. Purely observational, same as
+    // TitleChanged.
+    event EventHandler InterruptDetected;
+
     void Start();
 
     void WriteInput(string data);

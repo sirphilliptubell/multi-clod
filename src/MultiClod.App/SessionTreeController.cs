@@ -245,7 +245,7 @@ public sealed class SessionTreeController
         {
             ProjectHierarchyNode project => new ProjectNodeViewModel(project.Id, project.Name),
             SessionHierarchyNode session when recordsById.TryGetValue(session.SessionId, out var record) =>
-                new SessionNodeViewModel(record.Id, record.ClaudeSessionId, record.Name, record.WorkingDirectory, record.HasBeenStarted, record.DetectedTitle),
+                new SessionNodeViewModel(record.Id, record.ClaudeSessionId, record.Name, record.WorkingDirectory, record.HasBeenStarted, record.DetectedTitle, record.LastActivity),
 
             // A session hierarchy entry with no matching record means hand-edited/corrupt JSON -
             // drop just that entry rather than fail the whole load.
@@ -311,6 +311,7 @@ public sealed class SessionTreeController
             WorkingDirectory = session.WorkingDirectory,
             HasBeenStarted = session.HasBeenStarted,
             DetectedTitle = session.DetectedTitle,
+            LastActivity = session.LastActivity,
         });
 
         return new SessionHierarchyNode { SessionId = session.Id };

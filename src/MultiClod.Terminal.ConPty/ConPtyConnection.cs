@@ -35,6 +35,19 @@ public sealed class ConPtyConnection : IPtyConnection
 
     private const int MaxPendingTitleSequenceLength = 4096;
 
+    // Literal status text Claude Code's own Ink-based UI prints back to the terminal the moment a
+    // turn is cancelled (confirmed against the CLI's own bundled strings) - see
+    // ScanForInterruptMarker for why this exists at all. Deliberately matched as plain text, not
+    // alongside any specific ANSI styling around it, since the exact escape codes Ink wraps it in
+    // can vary with the terminal's detected color support (16-color vs truecolor) and aren't worth
+    // pinning to.
+    private const string InterruptMarker = "Interrupted";
+
+    // Holds the trailing (InterruptMarker.Length - 1) characters of raw output across PumpOutput
+    // reads, so a marker split across a 4096-byte read boundary isn't missed - same rationale as
+    // pendingTitleSequence above, just without needing an explicit terminator to wait for.
+    private string pendingInterruptTail = string.Empty;
+
     // Rolling tail of raw output, handed to Exited via ProcessExitedEventArgs.OutputTail - lets a
     // caller see whatever the child printed right before dying (e.g. "'claude' is not recognized
     // as an internal or external command") without needing to catch it live in the terminal pane
@@ -55,6 +68,8 @@ public sealed class ConPtyConnection : IPtyConnection
     public event EventHandler<ProcessExitedEventArgs>? Exited;
 
     public event EventHandler<string>? TitleChanged;
+
+    public event EventHandler? InterruptDetected;
 
     public void Start()
     {
@@ -192,6 +207,7 @@ public sealed class ConPtyConnection : IPtyConnection
                 var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                 this.OutputReceived?.Invoke(this, text);
                 this.ScanForTitleSequences(text);
+                this.ScanForInterruptMarker(text);
                 this.AppendToOutputTail(text);
             }
         }
@@ -267,6 +283,23 @@ public sealed class ConPtyConnection : IPtyConnection
     private void SetPendingTitleSequence(string value)
     {
         this.pendingTitleSequence = value.Length <= MaxPendingTitleSequenceLength ? value : null;
+    }
+
+    // Compensates for Claude Code's Stop hook never firing when the user interrupts a turn (e.g.
+    // pressing Escape) - see TerminalSession.OnHostInterruptDetected, the only current subscriber.
+    // Re-firing InterruptDetected for every subsequent chunk that still shows the marker (Ink
+    // redraws the whole frame on most updates) is harmless - the subscriber's handling is
+    // idempotent.
+    private void ScanForInterruptMarker(string text)
+    {
+        var combined = this.pendingInterruptTail + text;
+        if (combined.Contains(InterruptMarker, StringComparison.Ordinal))
+        {
+            this.InterruptDetected?.Invoke(this, EventArgs.Empty);
+        }
+
+        var tailLength = InterruptMarker.Length - 1;
+        this.pendingInterruptTail = combined.Length <= tailLength ? combined : combined[^tailLength..];
     }
 
     private void AppendToOutputTail(string text)

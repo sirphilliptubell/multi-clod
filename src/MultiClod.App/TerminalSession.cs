@@ -62,12 +62,19 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // (once the counter drains) knows to fire - see OnHostTitleChanged's "TaskEnd"/"Stop" cases.
     private bool awaitingBackgroundCompletion;
 
-    public TerminalSession(string workingDirectory, ISessionHost host)
+    // initialActivity seeds this session's glyph with its node's last-persisted settled state
+    // (see SessionNodeViewModel.LastActivity) - LaunchSession relaunches every previously-started
+    // session immediately on startup, so without this every node would flash back to a blank Idle
+    // glyph the instant the app reopens, even though it's about to show the exact same live
+    // Activity again once real hook signals resume.
+    public TerminalSession(string workingDirectory, ISessionHost host, SessionActivity initialActivity = SessionActivity.Idle)
     {
         this.WorkingDirectory = workingDirectory;
         this.Host = host;
+        this.activity = initialActivity;
         this.Host.StateChanged += this.OnHostStateChanged;
         this.Host.TitleChanged += this.OnHostTitleChanged;
+        this.Host.InterruptDetected += this.OnHostInterruptDetected;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -131,7 +138,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // interrupts Working, since that reflects Claude actually being mid-turn right now.
     public void ClearLatchedActivity()
     {
-        if (this.Activity is SessionActivity.NeedsInput or SessionActivity.Done)
+        if (this.Activity is SessionActivity.NeedsInput or SessionActivity.Done or SessionActivity.Interrupted)
         {
             this.Activity = SessionActivity.Idle;
         }
@@ -221,6 +228,30 @@ public sealed class TerminalSession : INotifyPropertyChanged
                 }
 
                 break;
+        }
+    }
+
+    private void OnHostInterruptDetected(object? sender, EventArgs e)
+    {
+        // Same cross-thread rationale as OnHostTitleChanged/OnHostStateChanged - raised from
+        // ConPtyConnection's output-pump thread.
+        Application.Current.Dispatcher.BeginInvoke(this.HandleInterruptDetected);
+    }
+
+    // Split out from OnHostInterruptDetected so tests can drive it directly, same rationale as
+    // ApplyTitle/OnHostTitleChanged.
+    internal void HandleInterruptDetected()
+    {
+        // Compensates for Claude Code's Stop hook never firing on a user-interrupted turn (e.g.
+        // pressing Escape) - see IPtyConnection.InterruptDetected. Only meaningful while a turn
+        // is genuinely in flight; a stray "Interrupted" the assistant happens to type into its own
+        // prose while Idle/NeedsInput/Done/Interrupted is a harmless no-op here rather than
+        // clobbering those.
+        if (this.Activity == SessionActivity.Working)
+        {
+            this.pendingBackgroundTasks = 0;
+            this.awaitingBackgroundCompletion = false;
+            this.Activity = SessionActivity.Interrupted;
         }
     }
 

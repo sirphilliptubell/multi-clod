@@ -73,6 +73,15 @@
                         <TextBlock Text="&#10003;" FontSize="9" FontWeight="Bold" Foreground="Orange"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
+                    <!-- Static (non-rotating) gray dashed ring - Claude Code's Stop hook never
+                         fires for a user-interrupted turn, so unlike NeedsInput/Done this doesn't
+                         come from a structured signal; we only know the turn was cut off, not what
+                         state it was actually in, so this deliberately looks "frozen mid-flight"
+                         rather than reusing WorkingSpinner's animation or NeedsInput/Done's glyphs.
+                         Also latches until the user re-selects this session - see
+                         SessionNodeViewModel.ClearLatchedActivity. -->
+                    <Ellipse x:Name="InterruptedGlyph" Width="10" Height="10" Visibility="Collapsed"
+                             Stroke="Gray" StrokeThickness="1.5" StrokeDashArray="3 1" />
                 </Grid>
                 <TextBlock x:Name="SessionNameText" Grid.Column="1" Text="{Binding Name}"
                            Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center"
@@ -123,6 +132,10 @@
                 <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Done}">
                     <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="DoneGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Interrupted}">
+                    <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="InterruptedGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
@@ -377,8 +390,9 @@
         <!--
             One tab per open session in the main panel's tab strip (MainWindow.TabStrip) - see
             MainWindow.OpenTab/CloseTab. Mirrors the tree's status-dot glyphs (IsHollow/NeedsInput/
-            Done) so a background tab still signals it needs attention without switching to it, but
-            skips the tree's animated Starting/Working spinners - not worth the extra visual noise
+            Done/Interrupted) so a background tab still signals it needs attention without
+            switching to it, but skips the tree's animated Starting/Working spinners - not worth
+            the extra visual noise
             at tab-strip size.
         -->
         <DataTemplate x:Key="SessionTabItemTemplate">
@@ -395,6 +409,9 @@
                         <TextBlock Text="&#10003;" FontSize="9" FontWeight="Bold" Foreground="Orange"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
+                    <!-- Static, not animated - matches InterruptedGlyph in the tree's own template. -->
+                    <Ellipse x:Name="TabInterruptedGlyph" Width="10" Height="10" Visibility="Collapsed"
+                             Stroke="Gray" StrokeThickness="1.5" StrokeDashArray="3 1" />
                 </Grid>
                 <TextBlock Text="{Binding DisplayTitle}" Foreground="White" VerticalAlignment="Center"
                            MaxWidth="160" TextTrimming="CharacterEllipsis" />
@@ -414,6 +431,10 @@
                 <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Done}">
                     <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="TabDoneGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Interrupted}">
+                    <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="TabInterruptedGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

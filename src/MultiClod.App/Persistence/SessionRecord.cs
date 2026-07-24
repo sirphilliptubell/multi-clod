@@ -21,4 +21,13 @@ public sealed class SessionRecord
     // stopped session before it's relaunched. Additive/nullable so old sessions.json files without
     // this field still deserialize fine.
     public string? DetectedTitle { get; set; }
+
+    // Last known "settled" SessionActivity (NeedsInput/Done/Interrupted, or Idle once
+    // acknowledged) - see SessionNodeViewModel.OnLiveSessionPropertyChanged, the only writer.
+    // Working is deliberately never persisted here: it only means something while a turn is
+    // genuinely in flight, and nothing survives a restart to ever clear it back off again.
+    // Non-nullable and defaulting to Idle (enum value 0) is intentional - an old sessions.json
+    // written before this field existed just deserializes it as Idle, which is exactly the
+    // fallback a never-recorded session should show.
+    public SessionActivity LastActivity { get; set; }
 }

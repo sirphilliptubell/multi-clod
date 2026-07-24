@@ -155,6 +155,75 @@ public sealed class TerminalSessionTests
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
     }
 
+    [Test]
+    public async Task HandleInterruptDetected_WhileWorking_SetsInterrupted()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.HandleInterruptDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Interrupted);
+    }
+
+    [Test]
+    public async Task HandleInterruptDetected_WhileNeedsInput_IsNoOp()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|NeedsInputSticky:prompt");
+
+        session.HandleInterruptDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
+    }
+
+    [Test]
+    public async Task HandleInterruptDetected_WhileDone_IsNoOp()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop");
+
+        session.HandleInterruptDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task HandleInterruptDetected_WithPendingBackgroundTask_DoesNotLaterFlipToDone()
+    {
+        // An interrupted turn abandons whatever Task calls it had outstanding - a TaskEnd that
+        // straggles in afterward shouldn't resurrect the old Stop-is-waiting state and flip to
+        // Done once the counter (spuriously) drains.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|TaskStart");
+        session.ApplyTitle("MULTICLOD:|Stop");
+        session.HandleInterruptDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Interrupted);
+
+        session.ApplyTitle("MULTICLOD:|TaskEnd");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Interrupted);
+    }
+
+    [Test]
+    public async Task ClearLatchedActivity_WhileInterrupted_ResetsToIdle()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.HandleInterruptDetected();
+        session.ClearLatchedActivity();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Idle);
+    }
+
     // Minimal ISessionHost stub - TerminalSession's constructor only subscribes to
     // StateChanged/TitleChanged and never touches Pane, so Pane deliberately throws if a test ever
     // starts relying on it unexpectedly.
@@ -172,6 +241,8 @@ public sealed class TerminalSessionTests
         public event EventHandler<SessionState>? StateChanged;
 
         public event EventHandler<string>? TitleChanged;
+
+        public event EventHandler? InterruptDetected;
 #pragma warning restore CS0067
 
         public void Start(TerminalLaunchOptions options)

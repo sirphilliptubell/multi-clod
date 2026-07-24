@@ -23,8 +23,16 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
     private string? detectedTitle;
     private Guid claudeSessionId;
     private SessionCostSummary costSummary = SessionCostSummary.NoData;
+    private SessionActivity lastActivity;
 
-    public SessionNodeViewModel(Guid id, Guid claudeSessionId, string name, string workingDirectory, bool hasBeenStarted, string? detectedTitle = null)
+    public SessionNodeViewModel(
+        Guid id,
+        Guid claudeSessionId,
+        string name,
+        string workingDirectory,
+        bool hasBeenStarted,
+        string? detectedTitle = null,
+        SessionActivity lastActivity = SessionActivity.Idle)
         : base(name)
     {
         this.Id = id;
@@ -32,6 +40,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.workingDirectory = workingDirectory;
         this.HasBeenStarted = hasBeenStarted;
         this.detectedTitle = detectedTitle;
+        this.lastActivity = lastActivity;
 
         // Renaming a session, or persisting a newly detected title, should both be reflected in
         // DisplayTitle - see the DisplayTitle fallback chain above.
@@ -77,7 +86,14 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
 
     public bool IsStarting => this.liveSession?.State == SessionState.Starting;
 
-    public SessionActivity Activity => this.liveSession?.Activity ?? SessionActivity.Idle;
+    // Falls back to the last-persisted settled state (see LastActivity) instead of always Idle,
+    // so a dormant node (never relaunched yet, or manually Stopped) still shows what it was left
+    // in rather than looking indistinguishable from a session that's never done anything.
+    public SessionActivity Activity => this.liveSession?.Activity ?? this.lastActivity;
+
+    // Persisted so a stopped/restarted session still reflects its last known settled activity -
+    // see SessionRecord.LastActivity and OnLiveSessionPropertyChanged, the only writer.
+    public SessionActivity LastActivity => this.lastActivity;
 
     // Called when the tree selection lands on this session - no-ops for a dormant node.
     public void ClearLatchedActivity() => this.liveSession?.ClearLatchedActivity();
@@ -195,6 +211,14 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         }
         else if (e.PropertyName == nameof(TerminalSession.Activity))
         {
+            // Working is deliberately excluded - see LastActivity/SessionRecord.LastActivity's
+            // remarks on why persisting it would reintroduce a stuck-forever glyph after a
+            // restart, since nothing would be left running to ever clear it.
+            if (this.liveSession is { } session && session.Activity != SessionActivity.Working)
+            {
+                this.lastActivity = session.Activity;
+            }
+
             this.RaisePropertyChanged(nameof(this.Activity));
         }
         else if (e.PropertyName == nameof(TerminalSession.DetectedTitle) && this.liveSession is { } session)

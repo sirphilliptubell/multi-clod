@@ -22,6 +22,8 @@ public sealed class WpfSessionHost : ISessionHost
 
     public event EventHandler<string>? TitleChanged;
 
+    public event EventHandler? InterruptDetected;
+
     public ITerminalPane Pane { get; }
 
     public SessionState State { get; private set; } = SessionState.NotStarted;
@@ -37,6 +39,7 @@ public sealed class WpfSessionHost : ISessionHost
         this.connection = new ConPtyConnection(options);
         this.connection.Exited += this.OnConnectionExited;
         this.connection.TitleChanged += this.OnConnectionTitleChanged;
+        this.connection.InterruptDetected += this.OnConnectionInterruptDetected;
 
         try
         {
@@ -59,6 +62,7 @@ public sealed class WpfSessionHost : ISessionHost
         {
             this.connection.Exited -= this.OnConnectionExited;
             this.connection.TitleChanged -= this.OnConnectionTitleChanged;
+            this.connection.InterruptDetected -= this.OnConnectionInterruptDetected;
         }
 
         this.Pane.Dispose();
@@ -86,6 +90,11 @@ public sealed class WpfSessionHost : ISessionHost
     private void OnConnectionTitleChanged(object? sender, string title)
     {
         this.TitleChanged?.Invoke(this, title);
+    }
+
+    private void OnConnectionInterruptDetected(object? sender, EventArgs e)
+    {
+        this.InterruptDetected?.Invoke(this, e);
     }
 
     private void SetState(SessionState state)
