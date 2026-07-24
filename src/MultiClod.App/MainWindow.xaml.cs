@@ -1450,8 +1450,14 @@ public partial class MainWindow : Window
                 this.TreeContextMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
 
                 // Plain enable/disable (unlike Delete's error-dialog approach) - "Stop while
-                // dormant" needs no explanation, it's just not a currently valid action.
-                this.TreeContextMenu.Items.Add(CreateMenuItem("Stop", () => this.StopSession(session), enabled: session.IsRunning));
+                // dormant" needs no explanation, it's just not a currently valid action. Also
+                // closes the tab (like OnCloseTabClick/OnDelete) - otherwise a dormant tab lingers
+                // in the strip and gets persisted/restored inert on next launch.
+                this.TreeContextMenu.Items.Add(CreateMenuItem("Stop", () =>
+                {
+                    this.CloseTab(session);
+                    this.StopSession(session);
+                }, enabled: session.IsRunning));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("Delete", () => this.OnDelete(session), inputGestureText: "Shift+Del"));
                 break;
         }
