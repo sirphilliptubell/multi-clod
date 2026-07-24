@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,8 +11,10 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using MultiClod.App.Activation;
 using MultiClod.App.Context;
 using MultiClod.App.Costs;
+using MultiClod.App.Deeplink;
 using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
 using MultiClod.App.MarkdownEditor;
@@ -40,6 +43,7 @@ public partial class MainWindow : Window
     private readonly TerminalKeyRoutingHook terminalKeyRoutingHook;
     private readonly UndoRedoShortcutHook undoRedoHook;
     private readonly SessionLogWindowRegistry sessionLogWindows = new();
+    private readonly DeeplinkImportWindowRegistry deeplinkWindows = new();
 
     // Covers Move/Delete/Rename on the tree - see the three call sites below. In-memory only, not
     // persisted, so history is lost on restart same as any other unsaved UI state.
@@ -69,7 +73,7 @@ public partial class MainWindow : Window
     // see OnUpdateStatusChanged. Captured once rather than stripping a suffix back off later.
     private readonly string baseTitle;
 
-    // Set in OnLoaded (mirrors app.FromHereRequests.Attach/Detach), so OnClosing can unsubscribe
+    // Set in OnLoaded (mirrors app.ActivationRequests.Attach/Detach), so OnClosing can unsubscribe
     // the same delegate instance - AppUpdateCoordinator outlives this window's lifetime (it's owned
     // by App), so a leaked subscription would otherwise keep this window alive too.
     private AppUpdateCoordinator? updateCoordinator;
@@ -244,7 +248,7 @@ public partial class MainWindow : Window
 
         if (Application.Current is App app)
         {
-            app.FromHereRequests.Attach(this.HandleFromHereRequest);
+            app.ActivationRequests.Attach(this.HandleActivationRequest);
 
             this.updateCoordinator = app.UpdateCoordinator;
             if (this.updateCoordinator is not null)
@@ -437,7 +441,7 @@ public partial class MainWindow : Window
     }
 
     // Ensures `session` has a tab in the strip and makes it the active one. Reselecting the same
-    // tree node twice in a row (or via RestoreOpenTabs/HandleFromHereRequest) never changes
+    // tree node twice in a row (or via RestoreOpenTabs/HandleFromHereSession) never changes
     // TabStrip.SelectedItem, so ActivateTab is called directly in that case since
     // OnTabStripSelectionChanged wouldn't otherwise fire.
     private void OpenTab(SessionNodeViewModel session)
@@ -1608,6 +1612,7 @@ public partial class MainWindow : Window
         // The app has no explicit ShutdownMode, so it defaults to OnLastWindowClose - a session
         // log window left open would otherwise keep the process alive after this window closes.
         this.sessionLogWindows.CloseAll();
+        this.deeplinkWindows.CloseAll();
         this.costMonitor.Dispose();
 
         this.shiftDeleteHook.Dispose();
@@ -1616,7 +1621,7 @@ public partial class MainWindow : Window
 
         if (Application.Current is App app)
         {
-            app.FromHereRequests.Detach();
+            app.ActivationRequests.Detach();
         }
 
         if (this.updateCoordinator is not null)
@@ -1658,6 +1663,7 @@ public partial class MainWindow : Window
         // but filtering here keeps window-layout.json honest about what's actually still around.
         var survivingSessionIds = this.controller.AllSessionNodes().Select(n => n.Id).ToHashSet();
         var openTabIds = this.openTabs.Select(s => s.Id).Where(survivingSessionIds.Contains).ToList();
+        var runningTabIds = runningSessions.Select(n => n.Id).Where(survivingSessionIds.Contains).ToList();
         var activeTabId = this.TabStrip.SelectedItem is SessionNodeViewModel { } activeSession && survivingSessionIds.Contains(activeSession.Id)
             ? activeSession.Id
             : (Guid?)null;
@@ -1671,6 +1677,7 @@ public partial class MainWindow : Window
             IsMaximized = this.WindowState == WindowState.Maximized,
             TreeColumnWidth = this.TreeColumn.Width.Value,
             OpenSessionTabIds = openTabIds,
+            RunningSessionTabIds = runningTabIds,
             ActiveSessionTabId = activeTabId,
         });
     }
@@ -1709,10 +1716,11 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Reopens (and relaunches, running in the background) whatever tabs were open when the window
-    /// last closed - see OnClosing. Called from OnLoaded, same HWND-readiness constraint as
-    /// HandleFromHereRequest below: starting a session before SessionViewHost's terminal control
-    /// has a real HWND silently never attaches a client process to it.
+    /// Reopens whatever tabs were open when the window last closed, relaunching (in the background)
+    /// only the ones that were actually running rather than stopped - see OnClosing. Called from
+    /// OnLoaded, same HWND-readiness constraint as HandleFromHereSession below: starting a session
+    /// before SessionViewHost's terminal control has a real HWND silently never attaches a client
+    /// process to it.
     /// </summary>
     private void RestoreOpenTabs(WindowLayout? layout)
     {
@@ -1722,6 +1730,7 @@ public partial class MainWindow : Window
         }
 
         var sessionsById = this.controller.AllSessionNodes().ToDictionary(n => n.Id);
+        var runningTabIds = layout.RunningSessionTabIds.ToHashSet();
 
         foreach (var id in layout.OpenSessionTabIds)
         {
@@ -1739,7 +1748,13 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            this.LaunchSession(session);
+            // Only relaunch the claude process for tabs that were actually running (not stopped)
+            // when the window last closed - a stopped tab reopens inert, matching how it was left.
+            if (runningTabIds.Contains(id))
+            {
+                this.LaunchSession(session);
+            }
+
             this.openTabs.Add(session);
         }
 
@@ -1768,10 +1783,12 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Handles both the pipe-driven hand-off from an already-running instance and this same
-    /// process's own --from-here startup argument - see App.FromHereRequests. Always runs on the
-    /// UI thread.
+    /// process's own startup arguments (--from-here or a multi-clod:// deeplink) - see
+    /// App.ActivationRequests. Always runs on the UI thread. A null request (or a plain
+    /// double-click's already-consumed args) is still "come to the foreground" for an
+    /// already-running instance being handed off to.
     /// </summary>
-    private void HandleFromHereRequest(string? directory)
+    private void HandleActivationRequest(ActivationRequest? request)
     {
         if (this.WindowState == WindowState.Minimized)
         {
@@ -1781,11 +1798,19 @@ public partial class MainWindow : Window
         this.Show();
         this.Activate();
 
-        if (directory is null)
+        switch (request)
         {
-            return;
+            case { Kind: ActivationRequestKind.FromHere } fromHere:
+                this.HandleFromHereSession(fromHere.Payload);
+                break;
+            case { Kind: ActivationRequestKind.Deeplink } deeplink:
+                this.HandleDeeplinkRequest(deeplink.Payload);
+                break;
         }
+    }
 
+    private void HandleFromHereSession(string directory)
+    {
         var uncategorized = this.controller.GetOrCreateUncategorized();
         var name = FolderDisplayName.GetName(directory);
         var session = this.controller.AddSession(uncategorized, name, directory);
@@ -1807,6 +1832,43 @@ public partial class MainWindow : Window
         // container actually selects.
         uncategorized.IsExpanded = true;
         session.IsSelected = true;
+    }
+
+    /// <summary>
+    /// Fetches/extracts/classifies a deeplinked session zip and opens it in a read-only
+    /// DeeplinkImportWindow - see Deeplink/DeeplinkImportCoordinator. Re-triggering a source that
+    /// already has a window open just focuses it instead of re-running the whole pipeline.
+    /// </summary>
+    private async void HandleDeeplinkRequest(string source)
+    {
+        var key = DeeplinkSourceKey.Normalize(source);
+        if (this.deeplinkWindows.TryFocus(key))
+        {
+            return;
+        }
+
+        var progressWindow = new DeeplinkProgressWindow(source) { Owner = this };
+        progressWindow.Show();
+
+        try
+        {
+            var importDirectory = DeeplinkImportStorage.GetImportDirectory(key);
+            var contents = await DeeplinkImportCoordinator.ImportAsync(source, importDirectory, progressWindow, CancellationToken.None);
+
+            progressWindow.Close();
+
+            var window = new DeeplinkImportWindow(source, contents) { Owner = this };
+            this.deeplinkWindows.Register(key, window);
+            window.Show();
+        }
+        catch (DeeplinkImportException ex)
+        {
+            progressWindow.ShowError(source, ex.Message);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            progressWindow.ShowError(source, ex.Message);
+        }
     }
 
     // Selected bubbles from any selected descendant, so without this guard a session becoming

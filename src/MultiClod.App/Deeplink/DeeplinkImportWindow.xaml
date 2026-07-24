@@ -1,0 +1,81 @@
+<Window x:Class="MultiClod.App.Deeplink.DeeplinkImportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework"
+        xmlns:sessionLog="clr-namespace:MultiClod.App.SessionLog"
+        xmlns:deeplink="clr-namespace:MultiClod.App.Deeplink"
+        Title="Session Log (Imported)" Height="900" Width="1400"
+        MaxHeight="{x:Static sys:SystemParameters.PrimaryScreenHeight}"
+        MaxWidth="{x:Static sys:SystemParameters.PrimaryScreenWidth}">
+    <!-- Same SystemColors overrides as SessionLogWindow.xaml, so selection highlighting in the
+         tree/list matches the rest of the app's dark theme. -->
+    <Window.Resources>
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="#3A96DD" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="#284861" />
+        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="White" />
+    </Window.Resources>
+    <Grid Background="#1E1E1E">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Sessions/Other-files toggle - swaps the ENTIRE window body below via Visibility, same
+             convention as SessionLogWindow's List/Tree/Costs toggle. -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#181818">
+            <Button x:Name="SessionsModeButton" Content="Sessions" Padding="12,6" Margin="4" BorderThickness="0"
+                    Foreground="White" Click="OnSessionsModeClicked" />
+            <Button x:Name="OtherFilesModeButton" Content="Other files" Padding="12,6" Margin="4" BorderThickness="0"
+                    Foreground="White" Click="OnOtherFilesModeClicked" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid x:Name="SessionsBodyRoot">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="280" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <TreeView x:Name="SessionsTreeView" Grid.Column="0" Background="#181818" BorderThickness="0"
+                          SelectedItemChanged="OnSessionTreeSelectedItemChanged"
+                          MouseRightButtonDown="OnSessionsTreeMouseRightButtonDown"
+                          ContextMenuOpening="OnSessionsTreeContextMenuOpening">
+                    <TreeView.ContextMenu>
+                        <ContextMenu x:Name="SessionsTreeContextMenu" />
+                    </TreeView.ContextMenu>
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type deeplink:DeeplinkSessionTreeItem}" ItemsSource="{Binding Children}">
+                            <TextBlock Text="{Binding DisplayName}" Foreground="White" Padding="4,2" TextTrimming="CharacterEllipsis" />
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+
+                <sessionLog:TranscriptViewerControl x:Name="Viewer" Grid.Column="1" />
+            </Grid>
+
+            <Grid x:Name="OtherFilesBodyRoot" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="280" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <ListBox x:Name="OtherFilesListBox" Grid.Column="0" Background="#181818" BorderThickness="0"
+                         SelectionChanged="OnOtherFileSelected"
+                         MouseRightButtonDown="OnOtherFilesListMouseRightButtonDown"
+                         ContextMenuOpening="OnOtherFilesListContextMenuOpening">
+                    <ListBox.ContextMenu>
+                        <ContextMenu x:Name="OtherFilesContextMenu" />
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type deeplink:DeeplinkOtherFileItem}">
+                            <TextBlock Text="{Binding DisplayName}" Foreground="White" Padding="4,2" TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <deeplink:PlainTextFileViewer x:Name="OtherFileViewer" Grid.Column="1" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

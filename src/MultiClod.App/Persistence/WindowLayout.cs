@@ -27,5 +27,10 @@ public sealed class WindowLayout
     // deleted since) is silently skipped on restore.
     public List<Guid> OpenSessionTabIds { get; init; } = new();
 
+    // Subset of OpenSessionTabIds that were actually running (not stopped) when the window last
+    // closed - see MainWindow.RestoreOpenTabs/OnClosing. Only these get relaunched on restore; a
+    // stopped session's tab reopens without spawning a claude process.
+    public List<Guid> RunningSessionTabIds { get; init; } = new();
+
     public Guid? ActiveSessionTabId { get; init; }
 }

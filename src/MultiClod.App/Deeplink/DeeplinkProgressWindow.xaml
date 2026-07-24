@@ -1,0 +1,22 @@
+<Window x:Class="MultiClod.App.Deeplink.DeeplinkProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Opening Session Log" Height="170" Width="480"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <Grid Background="#1E1E1E" Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="StatusText" Grid.Row="0" Foreground="White" TextWrapping="Wrap"
+                   Text="Downloading session..." Margin="0,0,0,12" />
+
+        <ProgressBar x:Name="ProgressBarControl" Grid.Row="1" Height="18" Minimum="0" Maximum="1" IsIndeterminate="True" />
+
+        <Button x:Name="CloseButton" Grid.Row="2" Content="Close" HorizontalAlignment="Right"
+                Margin="0,16,0,0" Padding="16,4" Visibility="Collapsed" Click="OnCloseClicked" />
+    </Grid>
+</Window>

@@ -1,0 +1,19 @@
+<UserControl x:Class="MultiClod.App.Deeplink.PlainTextFileViewer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="#1E1E1E">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="TruncationNotice" Grid.Row="0" Foreground="Gold" Padding="10,6"
+                   Visibility="Collapsed" TextWrapping="Wrap" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+            <TextBox x:Name="ContentTextBox" Background="#1E1E1E" Foreground="White" BorderThickness="0"
+                     IsReadOnly="True" TextWrapping="NoWrap" FontFamily="Consolas" Padding="10"
+                     VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

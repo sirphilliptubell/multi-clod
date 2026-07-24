@@ -1,3 +1,5 @@
+using MultiClod.App.Activation;
+using MultiClod.App.Deeplink;
 using MultiClod.App.FromHere;
 using MultiClod.App.Splash;
 using MultiClod.App.Updates;
@@ -51,14 +53,14 @@ public partial class App : Application {
 	}
 
 	/// <summary>
-	/// Both from-here delivery paths - this process's own --from-here startup argument, and the
-	/// pipe server below (a hand-off from a later MultiClod.FromHere invocation) - post through
-	/// here rather than raising an event directly, so a request posted before MainWindow exists to
-	/// attach a handler (StartupUri's window isn't constructed until after OnStartup returns) is
-	/// buffered instead of silently lost. MainWindow attaches once it exists - see its Loaded
-	/// handler.
+	/// Every activation delivery path - this process's own startup arguments (--from-here or a
+	/// multi-clod:// launch), and the pipe server below (a hand-off from a later MultiClod.App
+	/// invocation) - post through here rather than raising an event directly, so a request posted
+	/// before MainWindow exists to attach a handler (StartupUri's window isn't constructed until
+	/// after OnStartup returns) is buffered instead of silently lost. MainWindow attaches once it
+	/// exists - see its Loaded handler.
 	/// </summary>
-	public FromHereRequestQueue FromHereRequests { get; } = new();
+	public ActivationRequestQueue ActivationRequests { get; } = new();
 
 	/// <summary>
 	/// Exposed so MainWindow can reflect <see cref="AppUpdateCoordinator.StatusChanged"/> in the
@@ -70,7 +72,7 @@ public partial class App : Application {
 	protected override void OnStartup(StartupEventArgs e) {
 		this.DispatcherUnhandledException += this.OnDispatcherUnhandledException;
 
-		var requestedDirectory = ParseFromHereArgument(e.Args);
+		var activationRequest = ParseActivationArgument(e.Args);
 
 		this.singleInstanceMutex = new Mutex(initiallyOwned: true, FromHereProtocol.MutexName, out var createdNew);
 		if (!createdNew) {
@@ -78,12 +80,17 @@ public partial class App : Application {
 			// .OnStartup ever gets a chance to create a window (StartupUri="MainWindow.xaml" in
 			// App.xaml only fires from within that base call). Never touches updateCoordinator or
 			// the gate - this branch exits well before either would matter.
-			SendToRunningInstance(requestedDirectory);
+			SendToRunningInstance(activationRequest);
 			this.singleInstanceMutex.Dispose();
 			this.singleInstanceMutex = null;
 			this.Shutdown();
 			return;
 		}
+
+		// Best-effort wipe of every previous run's extracted deeplink imports - only the winning
+		// (non-handoff) instance ever reaches here, and it's synchronous so it always precedes any
+		// extraction this run's own activation could trigger later.
+		DeeplinkImportStorage.SweepOnLaunch();
 
 		this.updateCoordinator = AppUpdateCoordinator.CreateForRuntime();
 
@@ -121,21 +128,22 @@ public partial class App : Application {
 		}
 
 		// Posted synchronously, before the dispatcher ever pumps a pipe-driven Post below, so this
-		// is always first in FromHereRequests' buffer regardless of when MainWindow attaches. A
-		// plain double-click (no --from-here argument) posts nothing - MainWindow's own Show() via
-		// StartupUri is enough, matching the pipe path's null-directory case being "come to the
-		// foreground" only for an already-running instance, never for a fresh one.
-		if (requestedDirectory is not null) {
-			this.FromHereRequests.Post(requestedDirectory);
+		// is always first in ActivationRequests' buffer regardless of when MainWindow attaches. A
+		// plain double-click (no arguments) posts nothing - MainWindow's own Show() via StartupUri
+		// is enough, matching the pipe path's null-request case being "come to the foreground"
+		// only for an already-running instance, never for a fresh one.
+		if (activationRequest is not null) {
+			this.ActivationRequests.Post(activationRequest);
 		}
 
 		this.pipeServerCancellation = new CancellationTokenSource();
 		_ = this.RunPipeServerAsync(this.pipeServerCancellation.Token);
 
 		// Fire-and-forget: never blocks showing the window. A partial/failed install just means
-		// the context menu doesn't work until the next successful launch retries it - see
-		// FromHereInstaller's own doc comment.
+		// the context menu (or, for DeeplinkInstaller, the multi-clod:// link) doesn't work until
+		// the next successful launch retries it - see FromHereInstaller's own doc comment.
 		_ = Task.Run(FromHereInstaller.Install);
+		_ = Task.Run(DeeplinkInstaller.Install);
 
 		this.updateCoordinator.StartPeriodicChecks(this.Dispatcher);
 
@@ -173,22 +181,65 @@ public partial class App : Application {
 		startupUpdateGate.WaitForCheckToFinish(CrashGraceMs);
 	}
 
-	private static string? ParseFromHereArgument(string[] args) {
-		return args.Length == 2 && args[0] == "--from-here" ? args[1] : null;
+	// Recognizes both the existing "--from-here <dir>" startup form and a single multi-clod://
+	// launch argument (passed unquoted-but-whole by the shell that invoked us via the registry's
+	// "%1" command placeholder - see DeeplinkInstaller).
+	private static ActivationRequest? ParseActivationArgument(string[] args) {
+		if (args.Length == 2 && args[0] == "--from-here") {
+			return ActivationRequest.FromHere(args[1]);
+		}
+
+		if (args.Length == 1 && DeeplinkUri.TryParse(args[0], out var source)) {
+			return ActivationRequest.Deeplink(source);
+		}
+
+		return null;
 	}
 
-	private static void SendToRunningInstance(string? directory) {
+	// Wire format: one line, "FH\t<directory>" / "DL\t<url>", or empty for "just come to the
+	// foreground" (request is null). Kept deliberately simple (a single-char kind tag + tab) rather
+	// than e.g. JSON, since this pipe only ever carries this one shape between two copies of this
+	// same app.
+	private static void SendToRunningInstance(ActivationRequest? request) {
 		try {
 			using var client = new NamedPipeClientStream(".", FromHereProtocol.PipeName, PipeDirection.Out);
 			client.Connect(2000);
 
 			using var writer = new StreamWriter(client) { AutoFlush = true };
-			writer.WriteLine(directory ?? string.Empty);
+			writer.WriteLine(EncodeActivationRequest(request));
 		}
 		catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException) {
 			// No UI to report to yet - we haven't shown a window. Matches MultiClod.FromHere's
 			// own silent-failure policy for the same send.
 		}
+	}
+
+	private static string EncodeActivationRequest(ActivationRequest? request) {
+		if (request is not { } value) {
+			return string.Empty;
+		}
+
+		var tag = value.Kind == ActivationRequestKind.FromHere ? "FH" : "DL";
+		return $"{tag}\t{value.Payload}";
+	}
+
+	private static ActivationRequest? DecodeActivationRequest(string? line) {
+		if (string.IsNullOrEmpty(line)) {
+			return null;
+		}
+
+		var separatorIndex = line.IndexOf('\t');
+		if (separatorIndex < 0) {
+			return null;
+		}
+
+		var tag = line[..separatorIndex];
+		var payload = line[(separatorIndex + 1)..];
+		return tag switch {
+			"FH" => ActivationRequest.FromHere(payload),
+			"DL" => ActivationRequest.Deeplink(payload),
+			_ => null,
+		};
 	}
 
 	private async Task RunPipeServerAsync(CancellationToken cancellationToken) {
@@ -199,13 +250,13 @@ public partial class App : Application {
 
 				using var reader = new StreamReader(server);
 				var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-				var directory = string.IsNullOrEmpty(line) ? null : line;
+				var request = DecodeActivationRequest(line);
 
 				// Marshaled to the UI thread here (NamedPipeServerStream callbacks run on a
 				// background thread, same cross-thread discipline this repo already applies to
-				// IPtyConnection.OutputReceived/Exited) so FromHereRequestQueue itself can stay
+				// IPtyConnection.OutputReceived/Exited) so ActivationRequestQueue itself can stay
 				// UI-free and trivially testable.
-				_ = this.Dispatcher.BeginInvoke(() => this.FromHereRequests.Post(directory));
+				_ = this.Dispatcher.BeginInvoke(() => this.ActivationRequests.Post(request));
 			}
 			catch (OperationCanceledException) {
 				// Shutting down - exit the loop instead of treating this as a transient error.
