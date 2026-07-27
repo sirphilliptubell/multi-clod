@@ -194,6 +194,15 @@ public sealed class ConPtyConnection : IPtyConnection
         // handle from CreatePipe is not opened for overlapped I/O, and mirrors the synchronous
         // Read/CopyTo approach MiniTerm itself uses against the same kind of handle.
         var buffer = new byte[4096];
+
+        // A char buffer decoded via a persistent Decoder, not Encoding.UTF8.GetString(buffer, ...)
+        // per read - a 4096-byte read can split a multi-byte UTF-8 sequence (e.g. a 3-byte
+        // box-drawing character) across the boundary, and decoding each read in isolation turns
+        // both halves into U+FFFD replacement characters. The Decoder carries any incomplete
+        // trailing bytes over to the next GetChars call instead. Sized to match the byte buffer
+        // since UTF-8 never produces more chars than input bytes.
+        var charBuffer = new char[buffer.Length];
+        var utf8Decoder = Encoding.UTF8.GetDecoder();
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -204,7 +213,8 @@ public sealed class ConPtyConnection : IPtyConnection
                     break;
                 }
 
-                var text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                var charCount = utf8Decoder.GetChars(buffer, 0, bytesRead, charBuffer, 0);
+                var text = new string(charBuffer, 0, charCount);
                 this.OutputReceived?.Invoke(this, text);
                 this.ScanForTitleSequences(text);
                 this.ScanForInterruptMarker(text);
