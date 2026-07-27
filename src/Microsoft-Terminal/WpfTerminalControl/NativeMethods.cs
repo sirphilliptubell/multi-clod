@@ -88,6 +88,11 @@ namespace Microsoft.Terminal.Wpf
             WM_RBUTTONDOWN = 0x0204,
 
             /// <summary>
+            /// The WM_RBUTTONUP message is posted when the user releases the right mouse button while the cursor is in the client area of a window.
+            /// </summary>
+            WM_RBUTTONUP = 0x0205,
+
+            /// <summary>
             /// The WM_MOUSEWHEEL message is sent to the focus window when the mouse wheel is rotated. The DefWindowProc function propagates the message to the window's parent. There should be no internal forwarding of the message, since DefWindowProc propagates it up the parent chain until it finds a window that processes it.
             /// </summary>
             WM_MOUSEWHEEL = 0x020A,

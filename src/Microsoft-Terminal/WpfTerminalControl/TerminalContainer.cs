@@ -468,6 +468,32 @@ namespace Microsoft.Terminal.Wpf
                         this.Focus();
                         NativeMethods.SetFocus(this.hwnd);
                         break;
+
+                    // The native terminal core has its own default right-click behavior, but it
+                    // writes pasted clipboard text directly to the connection without bracketed-paste
+                    // markers - a connected readline-style CLI then treats every embedded newline as
+                    // Enter, submitting each line as it arrives instead of inserting a literal
+                    // multi-line block, so only the final (unsubmitted) line is left visible. Handling
+                    // both messages ourselves and marking them handled keeps that native path from
+                    // ever running, so right-click always goes through the same bracketed-paste-aware
+                    // PasteFromClipboard used for Ctrl+V. Mirrors the WM_KEYDOWN Ctrl+C case just
+                    // below: copy the active selection if there is one, otherwise paste.
+                    case NativeMethods.WindowMessage.WM_RBUTTONDOWN:
+                        handled = true;
+                        break;
+                    case NativeMethods.WindowMessage.WM_RBUTTONUP:
+                        if (this.GetSelectedText() is { Length: > 0 } rightClickSelectedText)
+                        {
+                            this.CopyToClipboard(rightClickSelectedText);
+                        }
+                        else
+                        {
+                            this.PasteFromClipboard();
+                        }
+
+                        handled = true;
+                        break;
+
                     case NativeMethods.WindowMessage.WM_SYSKEYDOWN: // fallthrough
                     case NativeMethods.WindowMessage.WM_KEYDOWN:
                         {
