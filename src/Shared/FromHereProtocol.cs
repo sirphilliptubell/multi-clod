@@ -36,4 +36,12 @@ internal static class FromHereProtocol
 #endif
 
     public const string ConfigFileName = "from-here-config.json";
+
+    /// <summary>
+    /// Wire-format tag prefix (see App.xaml.cs's EncodeActivationRequest/DecodeActivationRequest)
+    /// for a from-here directory sent over <see cref="PipeName"/> - shared so MultiClod.FromHere's
+    /// stub (a separate process/compilation, never referencing ActivationRequest) can produce the
+    /// exact line App.xaml.cs's pipe server expects, rather than the two drifting independently.
+    /// </summary>
+    public const string FromHereTag = "FH";
 }

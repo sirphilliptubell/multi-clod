@@ -219,7 +219,7 @@ public partial class App : Application {
 			return string.Empty;
 		}
 
-		var tag = value.Kind == ActivationRequestKind.FromHere ? "FH" : "DL";
+		var tag = value.Kind == ActivationRequestKind.FromHere ? FromHereProtocol.FromHereTag : "DL";
 		return $"{tag}\t{value.Payload}";
 	}
 
@@ -236,7 +236,7 @@ public partial class App : Application {
 		var tag = line[..separatorIndex];
 		var payload = line[(separatorIndex + 1)..];
 		return tag switch {
-			"FH" => ActivationRequest.FromHere(payload),
+			FromHereProtocol.FromHereTag => ActivationRequest.FromHere(payload),
 			"DL" => ActivationRequest.Deeplink(payload),
 			_ => null,
 		};

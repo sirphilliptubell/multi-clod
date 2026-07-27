@@ -36,7 +36,7 @@ static void TrySendToRunningInstance(string directory)
         client.Connect(2000);
 
         using var writer = new StreamWriter(client) { AutoFlush = true };
-        writer.WriteLine(directory);
+        writer.WriteLine($"{FromHereProtocol.FromHereTag}\t{directory}");
     }
     catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException)
     {
