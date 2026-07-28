@@ -15,6 +15,7 @@ using MultiClod.App.Activation;
 using MultiClod.App.Context;
 using MultiClod.App.Costs;
 using MultiClod.App.Deeplink;
+using MultiClod.App.EnvironmentVariables;
 using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
 using MultiClod.App.MarkdownEditor;
@@ -341,6 +342,10 @@ public partial class MainWindow : Window
         }
 
         host.Start(new TerminalLaunchOptions { WorkingDirectory = node.WorkingDirectory, CommandLine = commandLine });
+
+        // Feeds the tree node's "Environment Variables" context menu - resolved fresh on every
+        // start/resume so it reflects what this launch actually used, not what's on disk now.
+        node.SetCapturedEnvironmentVariables(ClaudeEnvironmentResolver.Resolve(node.WorkingDirectory));
 
         node.AttachLiveSession(session);
 
@@ -1448,6 +1453,7 @@ public partial class MainWindow : Window
                 this.TreeContextMenu.Items.Add(CreateMenuItem("View Session Log", () => this.sessionLogWindows.ShowOrFocus(session, this, this.costMonitor)));
                 this.TreeContextMenu.Items.Add(CreateMenuItem("View Session Costs", () => this.sessionLogWindows.ShowOrFocus(session, this, this.costMonitor, showCosts: true)));
                 this.TreeContextMenu.Items.Add(CreateMenuItem($"Copy Session Id {session.ClaudeSessionId}", () => Clipboard.SetText($"{session.ClaudeSessionId}")));
+                this.TreeContextMenu.Items.Add(CreateEnvironmentVariablesMenuItem(session));
 
                 // Plain enable/disable (unlike Delete's error-dialog approach) - "Stop while
                 // dormant" needs no explanation, it's just not a currently valid action. Also
@@ -1901,6 +1907,39 @@ public partial class MainWindow : Window
         item.Click += (_, _) => action();
         return item;
     }
+
+    // Reads whatever was captured on this session's last start/resume (SessionNodeViewModel.
+    // CapturedEnvironmentVariables) - never re-resolves live, so the menu reflects what this
+    // session actually launched with.
+    private static MenuItem CreateEnvironmentVariablesMenuItem(SessionNodeViewModel session)
+    {
+        var variables = session.CapturedEnvironmentVariables;
+        var envMenuItem = new MenuItem
+        {
+            Header = variables.Count > 0 ? "Environment Variables" : "Environment Variables (none)",
+            IsEnabled = variables.Count > 0,
+        };
+
+        foreach (var variable in variables)
+        {
+            var displayValue = variable.IsSecretLike ? MaskSecretValue(variable.Value) : variable.Value;
+            var child = new MenuItem
+            {
+                Header = $"{variable.Key}: {displayValue}",
+                ToolTip = $"Source: {variable.Source.Describe()}",
+            };
+
+            // Always copies the full real value, even for secret-like vars whose display is
+            // truncated above - the truncation is only shoulder-surfing/screenshot protection for
+            // what's shown, not a restriction on what the menu is for.
+            child.Click += (_, _) => Clipboard.SetText($"{variable.Key}: {variable.Value}");
+            envMenuItem.Items.Add(child);
+        }
+
+        return envMenuItem;
+    }
+
+    private static string MaskSecretValue(string value) => value.Length <= 4 ? value : $"{value[..4]}…";
 
     private static T? FindAncestor<T>(DependencyObject? current)
         where T : DependencyObject

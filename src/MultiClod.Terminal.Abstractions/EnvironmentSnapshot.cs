@@ -1,0 +1,57 @@
+namespace MultiClod.Terminal.Abstractions;
+
+/// <summary>
+/// The effective environment a session's child process actually receives: this app's own process
+/// environment, minus the VS Code / editor injected vars below. Shared (rather than duplicated in
+/// ProcessFactory) so anything else that needs "what claude would actually see" - e.g. the
+/// Environment Variables session menu - can't drift out of sync with what ProcessFactory really
+/// strips when building the child process's environment block.
+/// </summary>
+public static class EnvironmentSnapshot
+{
+    // Set by VS Code on any process it launches/debugs (F5, not just its integrated terminal),
+    // regardless of the "console" setting in launch.json - "externalTerminal" only changes where
+    // stdio is connected, not what env vars the debuggee inherits. Confirmed by hand: a session
+    // launched this way runs claude interactively (real responses, real MCP servers) but silently
+    // never persists a transcript or registers in ~/.claude/sessions - the same launch outside VS
+    // Code works fine. TERM_PROGRAM=vscode is the most likely single trigger (a common convention
+    // CLIs use to detect "running inside an editor" and special-case behavior), but since none of
+    // these are needed by claude and stripping them can't break anything, the whole family gets
+    // scrubbed rather than betting on isolating the exact one.
+    private static readonly HashSet<string> EditorInjectedVariablesToStrip = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TERM_PROGRAM",
+        "TERM_PROGRAM_VERSION",
+        "VSCODE_PID",
+        "VSCODE_CWD",
+        "VSCODE_NLS_CONFIG",
+        "VSCODE_IPC_HOOK",
+        "VSCODE_IPC_HOOK_CLI",
+        "VSCODE_INJECTION",
+        "VSCODE_IPC_HOOK_EXTHOST",
+        "VSCODE_IPC_HOOK_CLI_EXTHOST",
+        "VSCODE_GIT_ASKPASS_NODE",
+        "VSCODE_GIT_ASKPASS_EXTRA_ARGS",
+        "VSCODE_GIT_ASKPASS_MAIN",
+        "VSCODE_GIT_IPC_HANDLE",
+        "VSCODE_INSPECTOR_OPTIONS",
+        "ELECTRON_RUN_AS_NODE",
+    };
+
+    public static IReadOnlyDictionary<string, string> GetEffective()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            var key = (string)entry.Key;
+            if (EditorInjectedVariablesToStrip.Contains(key))
+            {
+                continue;
+            }
+
+            result[key] = (string?)entry.Value ?? string.Empty;
+        }
+
+        return result;
+    }
+}

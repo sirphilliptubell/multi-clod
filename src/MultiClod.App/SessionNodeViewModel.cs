@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows.Media;
 using MultiClod.App.Costs;
+using MultiClod.App.EnvironmentVariables;
 using MultiClod.App.Validation;
 using MultiClod.Terminal.Abstractions;
 
@@ -24,6 +25,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
     private Guid claudeSessionId;
     private SessionCostSummary costSummary = SessionCostSummary.NoData;
     private SessionActivity lastActivity;
+    private IReadOnlyList<ClaudeEnvironmentVariable> capturedEnvironmentVariables = Array.Empty<ClaudeEnvironmentVariable>();
 
     public SessionNodeViewModel(
         Guid id,
@@ -173,6 +175,16 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.RaisePropertyChanged(nameof(this.ToolTipText));
         this.RaisePropertyChanged(nameof(this.DisplayTitle));
     }
+
+    // Captured once per start/resume - see MainWindow.LaunchSession, the only caller of the
+    // setter. Deliberately in-memory only (never persisted, no property-change notification - the
+    // tree-node context menu reads this fresh each time it's opened, imperatively, same as
+    // ClaudeSessionId), and deliberately not cleared on Stop, so the menu keeps showing what the
+    // session last launched with instead of reverting to "(none)" for a session that's just
+    // temporarily stopped.
+    public IReadOnlyList<ClaudeEnvironmentVariable> CapturedEnvironmentVariables => this.capturedEnvironmentVariables;
+
+    public void SetCapturedEnvironmentVariables(IReadOnlyList<ClaudeEnvironmentVariable> variables) => this.capturedEnvironmentVariables = variables;
 
     public void DetachLiveSession()
     {
