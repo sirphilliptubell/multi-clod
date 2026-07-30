@@ -425,6 +425,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Clear any latched NeedsInput/Done/Interrupted glyph before detaching - otherwise
+        // DetachLiveSession's Activity falls back to lastActivity, which would still hold the
+        // latched value and keep showing that glyph instead of the dormant hollow dot.
+        node.ClearLatchedActivity();
+
         // Per WpfSessionHost/ConPtyConnection's single-use guard, this host instance can never be
         // Start()ed again - relaunching this node later always constructs a brand-new host, passing
         // --resume since HasBeenStarted is already persisted true.
