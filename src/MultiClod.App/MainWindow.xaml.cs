@@ -1203,6 +1203,28 @@ public partial class MainWindow : Window
         }
     }
 
+    // A click that lands on Tree's empty area (below the last row, or in the gutter beside one)
+    // hits no TreeViewItem, so neither OnItemPreviewMouseLeftButtonDown nor a selection change
+    // fires - Tree still takes default WPF focus for itself, though, same as any other focusable
+    // control clicked anywhere within its bounds. Most jarring when this click is also what
+    // reactivates the whole window after switching back from another app: the terminal that had
+    // focus before switching away loses it to Tree instead of keeping it. Deferred to ContextIdle
+    // for the same reason as ActivateTab's own Pane.Focus() call above - Tree hasn't actually taken
+    // focus yet while this (tunneling) handler is running, so focusing the pane now would just lose
+    // to Tree's own focus-on-click behavior once this dispatch unwinds.
+    private void OnTreePreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel { LiveSession: { } session })
+        {
+            this.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => session.Host.Pane.Focus()));
+        }
+    }
+
     private void OnItemPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         // The terminal's HwndHost sets real Win32 focus on its child hwnd (see

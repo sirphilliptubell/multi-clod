@@ -568,6 +568,7 @@
                       AllowDrop="True"
                       SelectedItemChanged="OnTreeSelectedItemChanged"
                       KeyDown="OnTreeKeyDown"
+                      PreviewMouseDown="OnTreePreviewMouseDown"
                       MouseRightButtonDown="OnTreeMouseRightButtonDown"
                       ContextMenuOpening="OnTreeContextMenuOpening"
                       DragOver="OnTreeDragOver"
