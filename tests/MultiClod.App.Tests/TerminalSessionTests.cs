@@ -156,6 +156,43 @@ public sealed class TerminalSessionTests
     }
 
     [Test]
+    public async Task ApplyTitle_StaleStopFromOlderTurn_DoesNotClobberNewerWorking()
+    {
+        // Regression for a stuck/late Claude Code hook subprocess (observed on Windows - see
+        // TerminalSession.currentTurnPromptId's remarks): a Stop straggling in long after its own
+        // turn ended, once the user has already started a new one, must not overwrite the new
+        // turn's Working back to Done.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var oldPromptId = Guid.NewGuid().ToString();
+        var newPromptId = Guid.NewGuid().ToString();
+
+        session.ApplyTitle($"MULTICLOD:|Working:{oldPromptId}");
+        session.ApplyTitle($"MULTICLOD:|Working:{newPromptId}");
+        session.ApplyTitle($"MULTICLOD:|Stop:{oldPromptId}");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+
+        session.ApplyTitle($"MULTICLOD:|Stop:{newPromptId}");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_StopWithNoPromptId_StillCompletesCurrentTurn()
+    {
+        // A Stop whose stdin JSON failed to parse (promptId null) - or from a Claude Code version
+        // older than the one that added prompt_id - degrades to the old trust-it-unconditionally
+        // behavior rather than being treated as stale.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var promptId = Guid.NewGuid().ToString();
+
+        session.ApplyTitle($"MULTICLOD:|Working:{promptId}");
+        session.ApplyTitle("MULTICLOD:|Stop");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
     public async Task HandleInterruptDetected_WhileWorking_SetsInterrupted()
     {
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());

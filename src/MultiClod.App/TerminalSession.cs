@@ -51,6 +51,17 @@ public sealed class TerminalSession : INotifyPropertyChanged
     // it, leaving the icon stuck on NeedsInput through an actually-completed later turn.
     private string? stickyNeedsInputPromptId;
 
+    // The prompt_id of the turn currently in flight (set by "Working", i.e. UserPromptSubmit) -
+    // guards "Stop" against a stale hook straggler from an OLDER, already-superseded turn. Claude
+    // Code hooks run as separate OS subprocesses (powershell.exe here) and are known to
+    // occasionally hang/get suspended on Windows (see anthropics/claude-code#77078); if one
+    // finally completes long after its turn ended - after the user has already sent a new
+    // message and a fresh "Working" landed - its "Stop" would otherwise unconditionally clobber
+    // the new turn's Working back to Done/Idle. Null (rather than empty) whenever no promptId is
+    // available (older Claude Code versions, or a hook whose stdin JSON failed to parse), which
+    // keeps the guard below a no-op in exactly the same cases it always was.
+    private string? currentTurnPromptId;
+
     // Count of Task tool calls (PreToolUse "TaskStart") not yet matched by a SubagentStop
     // ("TaskEnd"). Any Task call still outstanding when Stop fires is treated as a background
     // agent - see ClaudeSessionHooksInstaller. Plain in-memory field, same as activity: a restart
@@ -176,9 +187,12 @@ public sealed class TerminalSession : INotifyPropertyChanged
             this.ObservedClaudeSessionId = sessionId;
         }
 
-        // "Kind" and "Kind:promptId" - see claude-session-signal.ps1. Only NeedsInputSticky and
-        // Stop carry a promptId; a real Claude Code prompt_id is a UUID, so it never contains
-        // ':' itself.
+        // "Kind" and "Kind:promptId" - see claude-session-signal.ps1. Every marker carries a
+        // promptId whenever the hook's own stdin JSON included one (Claude Code v2.1.196+ sends
+        // prompt_id on every hook event for a turn, Working/Stop included - confirmed against real
+        // debug-hooks-*.log captures); older Claude Code versions or a hook whose stdin JSON
+        // failed to parse just leave it null. A real Claude Code prompt_id is a UUID, so it never
+        // contains ':' itself.
         var colonIndex = marker.IndexOf(':');
         var kind = colonIndex < 0 ? marker : marker[..colonIndex];
         var promptId = colonIndex < 0 ? null : marker[(colonIndex + 1)..];
@@ -186,6 +200,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
         switch (kind)
         {
             case "Working":
+                this.currentTurnPromptId = promptId;
                 this.awaitingBackgroundCompletion = false;
                 this.Activity = SessionActivity.Working;
                 break;
@@ -209,21 +224,28 @@ public sealed class TerminalSession : INotifyPropertyChanged
 
                 break;
             case "Stop":
-                // A sticky "Claude asked a question" is never silently overwritten by the
-                // Stop hook that always fires at turn-end for that same turn (matched by
-                // promptId); a transient permission-prompt block, or a Stop for any later
-                // turn (a different/absent promptId - e.g. once the user has replied), is
-                // free to move on to Done - unless a Task tool call from this turn is still
-                // outstanding, in which case Done is deferred to the "TaskEnd" case above.
-                if (this.stickyNeedsInputPromptId is null || this.stickyNeedsInputPromptId != promptId)
+                // Ignore a Stop that belongs to an OLDER turn than the one currently in flight -
+                // see currentTurnPromptId's remarks. Only rejected on a definite mismatch (both
+                // known and different); a null on either side falls through and is trusted as
+                // before, since that's the only signal we have when promptId isn't available.
+                if (this.currentTurnPromptId is null || promptId is null || this.currentTurnPromptId == promptId)
                 {
-                    if (this.pendingBackgroundTasks > 0)
+                    // A sticky "Claude asked a question" is never silently overwritten by the
+                    // Stop hook that always fires at turn-end for that same turn (matched by
+                    // promptId); a transient permission-prompt block, or a Stop for any later
+                    // turn (a different/absent promptId - e.g. once the user has replied), is
+                    // free to move on to Done - unless a Task tool call from this turn is still
+                    // outstanding, in which case Done is deferred to the "TaskEnd" case above.
+                    if (this.stickyNeedsInputPromptId is null || this.stickyNeedsInputPromptId != promptId)
                     {
-                        this.awaitingBackgroundCompletion = true;
-                    }
-                    else
-                    {
-                        this.Activity = SessionActivity.Done;
+                        if (this.pendingBackgroundTasks > 0)
+                        {
+                            this.awaitingBackgroundCompletion = true;
+                        }
+                        else
+                        {
+                            this.Activity = SessionActivity.Done;
+                        }
                     }
                 }
 
@@ -287,6 +309,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
             if (state != SessionState.Running)
             {
                 this.stickyNeedsInputPromptId = null;
+                this.currentTurnPromptId = null;
                 this.pendingBackgroundTasks = 0;
                 this.awaitingBackgroundCompletion = false;
                 this.Activity = SessionActivity.Idle;
