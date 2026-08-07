@@ -1,13 +1,16 @@
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
+using MultiClod.App.Context;
 
 namespace MultiClod.App.Validation;
 
 /// <summary>
-/// Mirrors how the claude CLI derives its per-project storage path under ~/.claude/projects/, so
-/// SessionValidator can check whether a --resume'd session's transcript still exists without
-/// spawning claude itself.
+/// Mirrors how the claude CLI derives its per-project storage path under
+/// ClaudeConfigDirectory.Root/projects/, so SessionValidator can check whether a --resume'd
+/// session's transcript still exists without spawning claude itself. Goes through
+/// ClaudeConfigDirectory.Root (not a raw ~/.claude join) so this still resolves correctly when
+/// CLAUDE_CONFIG_DIR is overridden - same rule the ContextTree's CLAUDE.md resolution follows.
 /// </summary>
 internal static class ClaudeProjectPath
 {
@@ -35,8 +38,7 @@ internal static class ClaudeProjectPath
 
     public static string GetSessionFilePath(string workingDirectory, Guid claudeSessionId)
     {
-        var claudeHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var projectDir = Path.Combine(claudeHome, ".claude", "projects", Encode(workingDirectory));
+        var projectDir = Path.Combine(ClaudeConfigDirectory.Root, "projects", Encode(workingDirectory));
         return Path.Combine(projectDir, $"{claudeSessionId}.jsonl");
     }
 }
