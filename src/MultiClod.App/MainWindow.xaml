@@ -693,10 +693,9 @@
                                   MouseLeftButtonDown="OnSessionMemoriesIconClick" ToolTip="Memories">
                                 <Border x:Name="SessionMemoriesAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
                                 <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
-                                    <!-- Lightbulb/thinking glyph, Segoe Fluent Icons - same font+codepoint already used for the
-                                         transcript viewer's "Thinking" row category (CategoryToGlyphConverter), rather than a
-                                         hand-drawn shape - a real brain silhouette doesn't read clearly at this size. -->
-                                    <TextBlock Text="&#xE7E7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
+                                    <!-- ThoughtBubble glyph, Segoe Fluent Icons (U+EA91) - a hand-drawn brain silhouette
+                                         doesn't read clearly at this size. -->
+                                    <TextBlock Text="&#xEA91;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
                                                Foreground="{DynamicResource Theme.Brush.AccentSecondary}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -792,8 +791,8 @@
                     <Grid x:Name="SessionMemoriesIconCollapsed" Width="32" Height="32" Margin="4"
                           MouseLeftButtonDown="OnSessionMemoriesIconClick" ToolTip="Memories">
                         <Border Width="24" Height="24" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
-                            <!-- Same lightbulb/thinking glyph as the expanded icon, just smaller. -->
-                            <TextBlock Text="&#xE7E7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                            <!-- Same ThoughtBubble glyph as the expanded icon, just smaller. -->
+                            <TextBlock Text="&#xEA91;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
                                        Foreground="{DynamicResource Theme.Brush.AccentSecondary}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
