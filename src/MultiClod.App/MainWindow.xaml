@@ -714,12 +714,12 @@
                                 </Border>
                             </Grid>
 
-                            <!-- Explicit collapse affordance - the collapsed strip has no drag handle of its own to expand back from. Double up-chevron, matching the collapse-toward-the-bottom direction. -->
+                            <!-- Explicit collapse affordance - the collapsed strip has no drag handle of its own to expand back from. Double down-chevron, matching the collapse-toward-the-bottom direction. -->
                             <Button x:Name="CollapseSessionSubPanelButton" Width="24" Height="20" Margin="0,8,0,0" Padding="0"
                                     Background="Transparent" BorderThickness="0" Click="OnCollapseSessionSubPanelClick" ToolTip="Collapse">
                                 <Canvas Width="14" Height="10">
-                                    <Polyline Points="1,4 7,1 13,4" Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
-                                    <Polyline Points="1,9 7,6 13,9" Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
+                                    <Polyline Points="1,1 7,4 13,1" Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
+                                    <Polyline Points="1,6 7,9 13,6" Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
                                 </Canvas>
                             </Button>
                         </StackPanel>
