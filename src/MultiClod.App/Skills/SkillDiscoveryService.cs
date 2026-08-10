@@ -9,7 +9,9 @@ namespace MultiClod.App.Skills;
 /// </summary>
 internal sealed class SkillDiscoveryService
 {
-    private const string SkillFileName = "SKILL.md";
+    // Internal rather than private - SessionScope.SessionPanelAvailability reuses this for its own
+    // repo-scoped ".claude/skills" presence check, so the filename can't silently drift apart.
+    internal const string SkillFileName = "SKILL.md";
 
     private readonly string rootDirectory;
 

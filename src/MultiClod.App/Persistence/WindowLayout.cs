@@ -22,6 +22,11 @@ public sealed class WindowLayout
 
     public double TreeColumnWidth { get; init; } = 220;
 
+    // Expanded height of the session-scoped sub-panel below the tree - see
+    // MainWindow.SetSessionSubPanelCollapsed. Collapse state itself is never persisted: it's
+    // re-derived from the restored active session's own memories/context-skills availability.
+    public double SessionSubPanelHeight { get; init; } = 180;
+
     // Session tabs open in the main panel's tab strip when the window last closed, in tab order -
     // see MainWindow.RestoreOpenTabs/OnClosing. An id no longer found among current sessions (e.g.
     // deleted since) is silently skipped on restore.

@@ -22,6 +22,7 @@ using MultiClod.App.MarkdownEditor;
 using MultiClod.App.Native;
 using MultiClod.App.Persistence;
 using MultiClod.App.SessionLog;
+using MultiClod.App.SessionScope;
 using MultiClod.App.Settings;
 using MultiClod.App.Skills;
 using MultiClod.App.Theming;
@@ -129,16 +130,89 @@ public partial class MainWindow : Window
     // flight, so it doesn't recursively re-trigger the other control's selection handler.
     private bool suppressContextPanelSelectionSync;
 
-    // Tracks which control the currently-loaded MarkdownEditor target came from, so a save only
-    // triggers a Context tree rebuild when it's actually editing a Context node - see
-    // OnMarkdownEditorDocumentSaved.
-    private bool activeMarkdownTargetIsContextNode;
+    // Which control's item is currently loaded into the shared MarkdownEditor - drives which
+    // @import tree (if any) gets rebuilt on save (see OnMarkdownEditorDocumentSaved; skills/
+    // memories never need it, matching their own rescan-on-next-launch-only convention) and lets
+    // the session-scoped sub-panel tell whether it's the one currently occupying the shared editor
+    // (see IsShowingSessionScopedDocument).
+    private enum MarkdownEditorSource
+    {
+        None,
+        TopLevelContext,
+        TopLevelSkill,
+        SessionMemory,
+        SessionContext,
+        SessionSkill,
+    }
+
+    private MarkdownEditorSource activeMarkdownEditorSource;
 
     // Set only from OnContextTreeMouseRightButtonDown before ContextMenuOpening fires - mirrors
     // the Sessions Tree's own rightClickedNode field (the field-based approach the Tree already
     // uses successfully, vs. the ListBox's selection-forcing approach - see
     // OnSkillsListMouseRightButtonDown for why the ListBox needed a different approach).
     private ContextFileNodeViewModel? rightClickedContextNode;
+
+    // Which of Memories/ContextSkills is showing in the session-scoped sub-panel below the tree,
+    // or null if neither - only meaningful while RailSection.Sessions is active. See
+    // SetSessionSubSection.
+    private SessionSubSection? currentSessionSubSection;
+
+    // Whether the session-scoped sub-panel is currently the collapsed horizontal icon strip. Not
+    // persisted - re-derived from the foreground session's own SessionPanelAvailability every time
+    // the active tab changes (see RefreshSessionSubPanelForActiveTab), with a manual override via
+    // SetSessionSubPanelCollapsed that only lasts until the next tab switch.
+    private bool isSessionSubPanelCollapsed = true;
+
+    // Fixed height of SessionSubPanelRow while collapsed - just enough for one row of 32x32 icons.
+    // Matches the RowDefinition's own XAML default, which is what's on screen before the first tab
+    // ever activates (see ctor/RestoreOpenTabs - a fresh launch with no tabs to restore never calls
+    // SetSessionSubPanelCollapsed at all).
+    private const double CollapsedSessionSubPanelHeight = 40;
+
+    // Applied to whichever of the two icon elements (expanded rail + collapsed strip) currently
+    // has nothing behind it - see ApplySessionSubPanelIconAvailability. Dimmed via Opacity rather
+    // than IsEnabled, since a greyed icon must stay clickable (see SetSessionSubSection).
+    private const double DimmedIconOpacity = 0.4;
+
+    // The user's dragged (or persisted-on-load) expanded height, kept in sync with
+    // SessionSubPanelRow.Height whenever the panel is actually expanded, and restored from here
+    // when re-expanding after a collapse (manual or automatic).
+    private double sessionSubPanelExpandedHeight;
+
+    // Which working directory sessionMemoryNodes was last built for - avoids rebuilding on every
+    // tab reselect when the foreground session's cwd hasn't actually changed. Tracked separately
+    // from sessionContextSkillsScopedWorkingDirectory below since the two sections rebuild
+    // independently (only the currently-active one, on demand) - a single shared tracker would
+    // incorrectly mark the *other* section's stale data as fresh once only one of them rebuilds.
+    private string? sessionMemoriesScopedWorkingDirectory;
+
+    // Same as above, for sessionContextRoot/sessionSkillNodes together (they always rebuild as a
+    // pair - see RebuildSessionContextSkills).
+    private string? sessionContextSkillsScopedWorkingDirectory;
+
+    private ObservableCollection<MemoryFileNodeViewModel>? sessionMemoryNodes;
+
+    private ContextFileNodeViewModel? sessionContextRoot;
+
+    private ObservableCollection<SkillNodeViewModel>? sessionSkillNodes;
+
+    // Mirrors suppressSkillsSelectionSideEffects, for MemoriesList specifically.
+    private bool suppressMemoriesSelectionSideEffects;
+
+    // Mirrors suppressContextPanelSelectionSync, scoped to SessionContextTree/SessionSkillsList's
+    // own mutual exclusivity - Memories isn't part of this pair, since it's a separate sub-section
+    // never visible at the same time as these two.
+    private bool suppressSessionContextPanelSelectionSync;
+
+    // Mirrors suppressSkillsSelectionSideEffects, for SessionSkillsList specifically.
+    private bool suppressSessionSkillsSelectionSideEffects;
+
+    // Guards the revert-on-declined-discard path in OnTabStripSelectionChanged, mirroring the same
+    // pattern the Skills/Context selection handlers already use - needed now that a tab switch can
+    // navigate away from a dirty session-scoped document in the shared MarkdownEditor, which wasn't
+    // possible before this sub-panel existed (RailSection.Sessions never used to show the editor).
+    private bool suppressTabStripSelectionSideEffects;
 
     public MainWindow()
     {
@@ -183,6 +257,11 @@ public partial class MainWindow : Window
         this.layoutStore = new WindowLayoutStore();
         this.savedLayout = this.layoutStore.Load();
         ApplyWindowLayout(this, this.TreeColumn, this.savedLayout);
+
+        // Only the *expanded* height is persisted (see WindowLayout.SessionSubPanelHeight) -
+        // SessionSubPanelRow itself stays at its collapsed XAML default until the first tab
+        // activates and RefreshSessionSubPanelForActiveTab decides whether to expand it.
+        this.sessionSubPanelExpandedHeight = this.savedLayout?.SessionSubPanelHeight ?? 180;
 
         this.settingsStore = new AppSettingsStore();
         this.appSettings = this.settingsStore.Load();
@@ -523,6 +602,19 @@ public partial class MainWindow : Window
     // OpenTab/CloseTab.
     private void OnTabStripSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (this.suppressTabStripSelectionSideEffects)
+        {
+            return;
+        }
+
+        if (this.IsShowingSessionScopedDocument && e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressTabStripSelectionSideEffects = true;
+            this.TabStrip.SelectedItem = e.RemovedItems[0];
+            this.suppressTabStripSelectionSideEffects = false;
+            return;
+        }
+
         if (e.RemovedItems.Count > 0 && e.RemovedItems[0] is SessionNodeViewModel { LiveSession: { } oldSession })
         {
             oldSession.Host.Pane.View.Visibility = Visibility.Collapsed;
@@ -542,9 +634,12 @@ public partial class MainWindow : Window
                 session.IsSelected = true;
                 this.suppressSelectionSideEffects = false;
             }
+
+            this.RefreshSessionSubPanelForActiveTab();
         }
         else
         {
+            this.RefreshSessionSubPanelForActiveTab();
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.PlaceholderText.Visibility = Visibility.Visible;
         }
@@ -777,8 +872,10 @@ public partial class MainWindow : Window
         this.ContextAccentBar.Visibility = section == RailSection.Context ? Visibility.Visible : Visibility.Collapsed;
         this.SettingsAccentBar.Visibility = section == RailSection.Settings ? Visibility.Visible : Visibility.Collapsed;
         this.Tree.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
+        this.SessionSubPanelHost.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.ContextPanel.Visibility = section == RailSection.Context ? Visibility.Visible : Visibility.Collapsed;
         this.TabStripHost.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
+        this.UpdateSessionSubPanelSplitterVisibility();
 
         // Both cleared unconditionally here - the branches below re-show whichever one actually
         // applies (RefreshContextPanelCanvas may re-show MarkdownEditor; the Settings branch always
@@ -937,9 +1034,14 @@ public partial class MainWindow : Window
 
     private void OnMarkdownEditorDocumentSaved(object? sender, string filePath)
     {
-        if (this.activeMarkdownTargetIsContextNode)
+        switch (this.activeMarkdownEditorSource)
         {
-            this.RebuildContextTree();
+            case MarkdownEditorSource.TopLevelContext:
+                this.RebuildContextTree();
+                break;
+            case MarkdownEditorSource.SessionContext:
+                this.RebuildSessionContextTreeOnly();
+                break;
         }
     }
 
@@ -1054,7 +1156,7 @@ public partial class MainWindow : Window
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
-            this.activeMarkdownTargetIsContextNode = true;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelContext;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
         }
         else if (this.SkillsList.SelectedItem is SkillNodeViewModel node)
@@ -1062,7 +1164,7 @@ public partial class MainWindow : Window
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
-            this.activeMarkdownTargetIsContextNode = false;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelSkill;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(node.Info.FilePath, node.Info.Name));
         }
         else
@@ -1070,6 +1172,345 @@ public partial class MainWindow : Window
             this.MarkdownEditor.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.PlaceholderText.Visibility = Visibility.Visible;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.None;
+        }
+    }
+
+    private bool IsShowingSessionScopedDocument =>
+        this.activeMarkdownEditorSource is MarkdownEditorSource.SessionMemory or MarkdownEditorSource.SessionContext or MarkdownEditorSource.SessionSkill;
+
+    // Recomputes memories/context-skills availability for the newly foreground session, dims the
+    // two icons (both orientations) accordingly, and auto-collapses/expands the sub-panel based on
+    // whether there's anything at all to show - the one place collapse state changes automatically.
+    // A manual expand via SetSessionSubPanelCollapsed(false) (clicking an icon while collapsed, or
+    // re-expanding) only holds until the next call to this method.
+    private void RefreshSessionSubPanelForActiveTab()
+    {
+        if (this.TabStrip.SelectedItem is not SessionNodeViewModel session)
+        {
+            this.SetSessionSubPanelCollapsed(true);
+            return;
+        }
+
+        var availability = SessionPanelAvailability.Compute(session.WorkingDirectory);
+        this.ApplySessionSubPanelIconAvailability(availability);
+        this.SetSessionSubPanelCollapsed(!availability.HasMemories && !availability.HasContextSkills);
+
+        if (this.currentSessionSubSection is { } section)
+        {
+            this.EnsureSessionSubSectionLoaded(section, session.WorkingDirectory);
+        }
+    }
+
+    private void ApplySessionSubPanelIconAvailability(SessionPanelAvailability availability)
+    {
+        var memoriesOpacity = availability.HasMemories ? 1.0 : DimmedIconOpacity;
+        var contextSkillsOpacity = availability.HasContextSkills ? 1.0 : DimmedIconOpacity;
+
+        this.SessionMemoriesIcon.Opacity = memoriesOpacity;
+        this.SessionMemoriesIconCollapsed.Opacity = memoriesOpacity;
+        this.SessionContextSkillsIcon.Opacity = contextSkillsOpacity;
+        this.SessionContextSkillsIconCollapsed.Opacity = contextSkillsOpacity;
+    }
+
+    private void SetSessionSubPanelCollapsed(bool collapsed)
+    {
+        if (collapsed == this.isSessionSubPanelCollapsed)
+        {
+            return;
+        }
+
+        if (collapsed)
+        {
+            // Remember the expanded height so re-expanding (manually or via the next tab switch)
+            // restores exactly where the user left it, rather than snapping back to the persisted
+            // default every time.
+            this.sessionSubPanelExpandedHeight = this.SessionSubPanelRow.Height.Value;
+            this.SetSessionSubSection(null);
+        }
+
+        this.isSessionSubPanelCollapsed = collapsed;
+        this.SessionSubPanelExpanded.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        this.SessionSubPanelCollapsedStrip.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
+        this.SessionSubPanelRow.Height = new GridLength(collapsed ? CollapsedSessionSubPanelHeight : this.sessionSubPanelExpandedHeight);
+        this.UpdateSessionSubPanelSplitterVisibility();
+    }
+
+    private void UpdateSessionSubPanelSplitterVisibility()
+    {
+        this.SessionSubPanelSplitter.Visibility = this.currentRailSection == RailSection.Sessions && !this.isSessionSubPanelCollapsed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void SetSessionSubSection(SessionSubSection? section)
+    {
+        // Clicking the already-active icon toggles it off.
+        if (section == this.currentSessionSubSection)
+        {
+            section = null;
+        }
+
+        if (this.IsShowingSessionScopedDocument && !this.MarkdownEditor.TryNavigateAway())
+        {
+            return;
+        }
+
+        if (section is not null)
+        {
+            this.SetSessionSubPanelCollapsed(false);
+        }
+
+        this.currentSessionSubSection = section;
+        this.SessionMemoriesAccentBar.Visibility = section == SessionSubSection.Memories ? Visibility.Visible : Visibility.Collapsed;
+        this.SessionContextSkillsAccentBar.Visibility = section == SessionSubSection.ContextSkills ? Visibility.Visible : Visibility.Collapsed;
+        this.MemoriesSectionView.Visibility = section == SessionSubSection.Memories ? Visibility.Visible : Visibility.Collapsed;
+        this.ContextSkillsSectionView.Visibility = section == SessionSubSection.ContextSkills ? Visibility.Visible : Visibility.Collapsed;
+
+        if (section is null)
+        {
+            this.ClearSessionSubSectionSelections();
+
+            if (this.IsShowingSessionScopedDocument)
+            {
+                this.MarkdownEditor.Visibility = Visibility.Collapsed;
+                this.activeMarkdownEditorSource = MarkdownEditorSource.None;
+                this.RefreshSessionsCanvas();
+            }
+
+            return;
+        }
+
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
+        {
+            this.EnsureSessionSubSectionLoaded(section.Value, session.WorkingDirectory);
+        }
+    }
+
+    private void EnsureSessionSubSectionLoaded(SessionSubSection section, string workingDirectory)
+    {
+        var alreadyBuiltForThisSession = section == SessionSubSection.Memories
+            ? this.sessionMemoryNodes is not null && string.Equals(this.sessionMemoriesScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase)
+            : this.sessionContextRoot is not null && string.Equals(this.sessionContextSkillsScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase);
+
+        if (alreadyBuiltForThisSession)
+        {
+            return;
+        }
+
+        if (section == SessionSubSection.Memories)
+        {
+            this.sessionMemoriesScopedWorkingDirectory = workingDirectory;
+            this.RebuildSessionMemories(workingDirectory);
+        }
+        else
+        {
+            this.sessionContextSkillsScopedWorkingDirectory = workingDirectory;
+            this.RebuildSessionContextSkills(workingDirectory);
+        }
+
+        // A cwd change while this section was already open would otherwise leave the *previous*
+        // session's file still selected and rendered - drop it so the shared MarkdownEditor/
+        // terminal reflects the session actually in the foreground now. Harmless no-op the first
+        // time a section is ever opened, since there's nothing yet to clear.
+        this.ClearSessionSubSectionSelections();
+        if (this.IsShowingSessionScopedDocument)
+        {
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.None;
+            this.RefreshSessionsCanvas();
+        }
+    }
+
+    private void RebuildSessionMemories(string workingDirectory)
+    {
+        var files = MemoryFileListBuilder.Build(SessionScopedPaths.GetMemoryDirectory(workingDirectory));
+        this.sessionMemoryNodes = new ObservableCollection<MemoryFileNodeViewModel>(files);
+        this.MemoriesList.ItemsSource = this.sessionMemoryNodes;
+        this.MemoriesList.Visibility = this.sessionMemoryNodes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        this.MemoriesEmptyText.Visibility = this.sessionMemoryNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RebuildSessionContextSkills(string workingDirectory)
+    {
+        if (!SessionScopedPaths.TryGetRepoRoot(workingDirectory, out var repoRoot))
+        {
+            // Not a repo at all - showing a permanently-missing CLAUDE.md would misleadingly imply
+            // this could still work here, so the tree/skills pair is hidden entirely rather than
+            // resolved against workingDirectory itself.
+            this.sessionContextRoot = null;
+            this.sessionSkillNodes = null;
+            this.SessionContextPanel.Visibility = Visibility.Collapsed;
+            this.SessionContextSkillsEmptyText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        this.sessionContextRoot = ContextTreeBuilder.BuildRoot(Path.Combine(repoRoot, "CLAUDE.md"));
+        this.SessionContextTree.ItemsSource = new[] { this.sessionContextRoot };
+
+        var skills = new SkillDiscoveryService(Path.Combine(repoRoot, ".claude", "skills")).ScanPersonalSkills();
+        this.sessionSkillNodes = new ObservableCollection<SkillNodeViewModel>(skills.Select(s => new SkillNodeViewModel(s)));
+        this.SessionSkillsList.ItemsSource = this.sessionSkillNodes;
+
+        this.SessionContextPanel.Visibility = Visibility.Visible;
+        this.SessionContextSkillsEmptyText.Visibility = Visibility.Collapsed;
+    }
+
+    // Rebuilds just the session-scoped CLAUDE.md tree after saving an edit through MarkdownEditor -
+    // mirrors RebuildContextTree. Skills are deliberately left alone, matching their own
+    // rescan-on-next-launch-only convention (see EnsureSkillsLoaded).
+    private void RebuildSessionContextTreeOnly()
+    {
+        if (this.sessionContextSkillsScopedWorkingDirectory is not { } workingDirectory
+            || !SessionScopedPaths.TryGetRepoRoot(workingDirectory, out var repoRoot))
+        {
+            return;
+        }
+
+        var expandedPaths = this.sessionContextRoot is null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : CollectExpandedPaths(this.sessionContextRoot);
+
+        this.sessionContextRoot = ContextTreeBuilder.BuildRoot(Path.Combine(repoRoot, "CLAUDE.md"));
+        ReapplyExpansion(this.sessionContextRoot, expandedPaths);
+        this.SessionContextTree.ItemsSource = new[] { this.sessionContextRoot };
+    }
+
+    private void ClearSessionSubSectionSelections()
+    {
+        this.suppressMemoriesSelectionSideEffects = true;
+        this.MemoriesList.SelectedItem = null;
+        this.suppressMemoriesSelectionSideEffects = false;
+
+        this.suppressSessionSkillsSelectionSideEffects = true;
+        this.SessionSkillsList.SelectedItem = null;
+        this.suppressSessionSkillsSelectionSideEffects = false;
+
+        if (this.SessionContextTree.SelectedItem is ContextFileNodeViewModel node)
+        {
+            this.suppressSessionContextPanelSelectionSync = true;
+            node.IsSelected = false;
+            this.suppressSessionContextPanelSelectionSync = false;
+        }
+    }
+
+    private void OnSessionMemoriesIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetSessionSubSection(SessionSubSection.Memories);
+    }
+
+    private void OnSessionContextSkillsIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetSessionSubSection(SessionSubSection.ContextSkills);
+    }
+
+    private void OnCollapseSessionSubPanelClick(object sender, RoutedEventArgs e)
+    {
+        this.SetSessionSubPanelCollapsed(true);
+    }
+
+    private void OnMemoriesListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressMemoriesSelectionSideEffects)
+        {
+            return;
+        }
+
+        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressMemoriesSelectionSideEffects = true;
+            this.MemoriesList.SelectedItem = e.RemovedItems[0];
+            this.suppressMemoriesSelectionSideEffects = false;
+            return;
+        }
+
+        this.RefreshSessionSubPanelCanvas();
+    }
+
+    private void OnSessionContextTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (this.suppressSessionContextPanelSelectionSync)
+        {
+            return;
+        }
+
+        if (e.OldValue is ContextFileNodeViewModel oldNode && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressSessionContextPanelSelectionSync = true;
+            oldNode.IsSelected = true;
+            this.suppressSessionContextPanelSelectionSync = false;
+            return;
+        }
+
+        // Clear SessionSkillsList's selection so only one of the two stacked controls is ever
+        // visually "active" - guarded so this side effect doesn't recursively re-enter
+        // OnSessionSkillsListSelectionChanged (see that handler's own top-of-method guard).
+        if (e.NewValue is ContextFileNodeViewModel && this.SessionSkillsList.SelectedItem is not null)
+        {
+            this.suppressSessionContextPanelSelectionSync = true;
+            this.SessionSkillsList.SelectedItem = null;
+            this.suppressSessionContextPanelSelectionSync = false;
+        }
+
+        this.RefreshSessionSubPanelCanvas();
+    }
+
+    private void OnSessionSkillsListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressSessionSkillsSelectionSideEffects || this.suppressSessionContextPanelSelectionSync)
+        {
+            return;
+        }
+
+        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressSessionSkillsSelectionSideEffects = true;
+            this.SessionSkillsList.SelectedItem = e.RemovedItems[0];
+            this.suppressSessionSkillsSelectionSideEffects = false;
+            return;
+        }
+
+        // Clear SessionContextTree's selection so only one of the two stacked controls is ever
+        // visually "active" - guarded so this side effect doesn't recursively re-enter
+        // OnSessionContextTreeSelectedItemChanged (see that handler's own top-of-method guard).
+        if (this.SessionSkillsList.SelectedItem is not null && this.SessionContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
+        {
+            this.suppressSessionContextPanelSelectionSync = true;
+            contextNode.IsSelected = false;
+            this.suppressSessionContextPanelSelectionSync = false;
+        }
+
+        this.RefreshSessionSubPanelCanvas();
+    }
+
+    private void RefreshSessionSubPanelCanvas()
+    {
+        if (this.MemoriesList.SelectedItem is MemoryFileNodeViewModel memoryNode)
+        {
+            this.HideActiveSessionPane();
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.SessionMemory;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(memoryNode.FilePath, memoryNode.Name));
+        }
+        else if (this.SessionContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
+        {
+            this.HideActiveSessionPane();
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.SessionContext;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
+        }
+        else if (this.SessionSkillsList.SelectedItem is SkillNodeViewModel skillNode)
+        {
+            this.HideActiveSessionPane();
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.SessionSkill;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(skillNode.Info.FilePath, skillNode.Info.Name));
+        }
+        else
+        {
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.None;
+            this.RefreshSessionsCanvas();
         }
     }
 
@@ -1723,6 +2164,10 @@ public partial class MainWindow : Window
             Height = bounds.Height,
             IsMaximized = this.WindowState == WindowState.Maximized,
             TreeColumnWidth = this.TreeColumn.Width.Value,
+            // Row.Height only reflects the true expanded value while actually expanded - while
+            // collapsed, the row is sized to the fixed collapsed constant instead, so the
+            // remembered pre-collapse value is what's persisted in that case.
+            SessionSubPanelHeight = this.isSessionSubPanelCollapsed ? this.sessionSubPanelExpandedHeight : this.SessionSubPanelRow.Height.Value,
             OpenSessionTabIds = openTabIds,
             RunningSessionTabIds = runningTabIds,
             ActiveSessionTabId = activeTabId,

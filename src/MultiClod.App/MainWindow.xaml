@@ -563,7 +563,13 @@
         </Border>
 
         <Grid Grid.Column="1">
-            <TreeView x:Name="Tree" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition x:Name="SessionSubPanelRow" Height="40" />
+            </Grid.RowDefinitions>
+
+            <TreeView x:Name="Tree" Grid.Row="0" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       AllowDrop="True"
                       SelectedItemChanged="OnTreeSelectedItemChanged"
@@ -604,7 +610,7 @@
                 children below. One shared Visibility flag controls both stacked children together,
                 since they're always shown/hidden as a unit.
             -->
-            <Grid x:Name="ContextPanel" Visibility="Collapsed">
+            <Grid x:Name="ContextPanel" Grid.RowSpan="3" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" MaxHeight="220" />
                     <RowDefinition Height="Auto" />
@@ -654,6 +660,157 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+            </Grid>
+
+            <!--
+                Horizontal splitter between Tree and SessionSubPanelHost - visible only while
+                RailSection.Sessions is active and the sub-panel is expanded (see SetRailSection/
+                SetSessionSubPanelCollapsed via UpdateSessionSubPanelSplitterVisibility). Collapsed
+                to a fixed-height strip, there's nothing to drag, so it's hidden rather than shown
+                inert.
+            -->
+            <GridSplitter x:Name="SessionSubPanelSplitter" Grid.Row="1" Height="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="{DynamicResource Theme.Brush.WindowBackground}" ResizeBehavior="PreviousAndNext" Visibility="Collapsed" />
+
+            <!--
+                Session-scoped sub-panel: Memories + repo-local Context/Skills for whichever session
+                tab is in the foreground - see MainWindow.SetSessionSubSection/
+                SetSessionSubPanelCollapsed/RefreshSessionSubPanelForActiveTab. Only meaningful while
+                RailSection.Sessions is active, so its own Visibility is toggled alongside Tree's in
+                SetRailSection.
+            -->
+            <Grid x:Name="SessionSubPanelHost" Grid.Row="2">
+                <!-- Expanded: [48px vertical mini-rail][content], matching the main rail's width. -->
+                <Grid x:Name="SessionSubPanelExpanded" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="{DynamicResource Theme.Brush.RailBackground}" BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,0,1,0">
+                        <StackPanel>
+                            <Grid x:Name="SessionMemoriesIcon" Width="48" Height="48" Margin="0,4,0,0"
+                                  MouseLeftButtonDown="OnSessionMemoriesIconClick" ToolTip="Memories">
+                                <Border x:Name="SessionMemoriesAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
+                                <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                                    <!-- Lightbulb/thinking glyph, Segoe Fluent Icons - same font+codepoint already used for the
+                                         transcript viewer's "Thinking" row category (CategoryToGlyphConverter), rather than a
+                                         hand-drawn shape - a real brain silhouette doesn't read clearly at this size. -->
+                                    <TextBlock Text="&#xE7E7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20"
+                                               Foreground="{DynamicResource Theme.Brush.AccentSecondary}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+
+                            <Grid x:Name="SessionContextSkillsIcon" Width="48" Height="48"
+                                  MouseLeftButtonDown="OnSessionContextSkillsIconClick" ToolTip="Context / Skills (this repo)">
+                                <Border x:Name="SessionContextSkillsAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
+                                <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                                    <Canvas Width="24" Height="24">
+                                        <Border Width="16" Height="20" Canvas.Left="4" Canvas.Top="2" CornerRadius="2" Background="{DynamicResource Theme.Brush.AccentSecondary}" />
+                                        <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="7" Fill="#1E1E1E" />
+                                        <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="11" Fill="#1E1E1E" />
+                                        <Rectangle Width="6" Height="1.5" Canvas.Left="7" Canvas.Top="15" Fill="#1E1E1E" />
+                                    </Canvas>
+                                </Border>
+                            </Grid>
+
+                            <!-- Explicit collapse affordance - the collapsed strip has no drag handle of its own to expand back from. Double up-chevron, matching the collapse-toward-the-bottom direction. -->
+                            <Button x:Name="CollapseSessionSubPanelButton" Width="24" Height="20" Margin="0,8,0,0" Padding="0"
+                                    Background="Transparent" BorderThickness="0" Click="OnCollapseSessionSubPanelClick" ToolTip="Collapse">
+                                <Canvas Width="14" Height="10">
+                                    <Polyline Points="1,4 7,1 13,4" Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
+                                    <Polyline Points="1,9 7,6 13,9" Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
+                                </Canvas>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Grid.Column="1">
+                        <!-- Memories: session's Claude memory folder's .md files, MEMORY.md pinned first - see SessionScope.MemoryFileListBuilder. -->
+                        <Grid x:Name="MemoriesSectionView" Visibility="Collapsed">
+                            <ListBox x:Name="MemoriesList" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                     SelectionChanged="OnMemoriesListSelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" Margin="4" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock x:Name="MemoriesEmptyText" Text="No memories for this session" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </Grid>
+
+                        <!-- Session-scoped Context/Skills: mirrors ContextPanel's own tree+separator+list structure above, rooted at the repo instead of ~. -->
+                        <Grid x:Name="ContextSkillsSectionView" Visibility="Collapsed">
+                            <Grid x:Name="SessionContextPanel">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" MaxHeight="220" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <TreeView x:Name="SessionContextTree" Grid.Row="0" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ItemContainerStyle="{StaticResource ContextTreeItemStyle}"
+                                          SelectedItemChanged="OnSessionContextTreeSelectedItemChanged">
+                                    <TreeView.Resources>
+                                        <!-- Same selection-highlight overrides as Tree/ContextTree above, duplicated since each TreeView's Resources is its own scope. -->
+                                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
+                                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+                                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                                    </TreeView.Resources>
+                                </TreeView>
+
+                                <Border Grid.Row="1" Height="1" Margin="4,4" Background="{DynamicResource Theme.Brush.Border}" />
+
+                                <ListBox x:Name="SessionSkillsList" Grid.Row="2" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                         SelectionChanged="OnSessionSkillsListSelectionChanged">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                                <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+
+                            <TextBlock x:Name="SessionContextSkillsEmptyText" Text="Not a git repo" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
+                </Grid>
+
+                <!-- Collapsed: horizontal icon strip, no content - see SetSessionSubPanelCollapsed. -->
+                <StackPanel x:Name="SessionSubPanelCollapsedStrip" Orientation="Horizontal" Background="{DynamicResource Theme.Brush.RailBackground}">
+                    <Grid x:Name="SessionMemoriesIconCollapsed" Width="32" Height="32" Margin="4"
+                          MouseLeftButtonDown="OnSessionMemoriesIconClick" ToolTip="Memories">
+                        <Border Width="24" Height="24" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                            <!-- Same lightbulb/thinking glyph as the expanded icon, just smaller. -->
+                            <TextBlock Text="&#xE7E7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                                       Foreground="{DynamicResource Theme.Brush.AccentSecondary}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="SessionContextSkillsIconCollapsed" Width="32" Height="32" Margin="0,4,4,4"
+                          MouseLeftButtonDown="OnSessionContextSkillsIconClick" ToolTip="Context / Skills (this repo)">
+                        <Border Width="24" Height="24" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                            <Canvas Width="16" Height="16">
+                                <Border Width="11" Height="13" Canvas.Left="2.5" Canvas.Top="1.5" CornerRadius="1.5" Background="{DynamicResource Theme.Brush.AccentSecondary}" />
+                                <Rectangle Width="7" Height="1" Canvas.Left="4.5" Canvas.Top="5" Fill="#1E1E1E" />
+                                <Rectangle Width="7" Height="1" Canvas.Left="4.5" Canvas.Top="7.5" Fill="#1E1E1E" />
+                                <Rectangle Width="4" Height="1" Canvas.Left="4.5" Canvas.Top="10" Fill="#1E1E1E" />
+                            </Canvas>
+                        </Border>
+                    </Grid>
+                </StackPanel>
             </Grid>
         </Grid>
 
