@@ -19,7 +19,13 @@ namespace Microsoft.Terminal.Wpf
     /// </summary>
     public partial class TerminalControl : UserControl
     {
+        // Coalesces TerminalScrolled callbacks (see TermControl_TerminalScrolled) so a chatty or
+        // long-running session's output can't queue an unbounded number of dispatcher callbacks.
+        private readonly object scrollUpdateLock = new object();
+
         private int accumulatedDelta = 0;
+        private bool scrollUpdatePending;
+        private (int viewTop, int viewHeight, int bufferSize) pendingScrollUpdate;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TerminalControl"/> class.
@@ -273,24 +279,54 @@ namespace Microsoft.Terminal.Wpf
                 return;
             }
 
-            this.Dispatcher.InvokeAsync(() =>
-            {
-                var lines = -this.accumulatedDelta / lineDelta;
-                this.scrollbar.Value += lines;
-                this.accumulatedDelta = 0;
+            // TerminalContainer's message hook already runs on the UI thread (it's a
+            // WM_MOUSEWHEEL caught by an HwndSource hook during the normal message pump), so
+            // apply the scroll directly instead of re-queuing through the dispatcher - queuing
+            // here let a user's own scroll input get stuck behind whatever backlog
+            // TermControl_TerminalScrolled had built up from a chatty/long-running session, which
+            // is what made scrolling appear to stop working.
+            var lines = -this.accumulatedDelta / lineDelta;
+            this.scrollbar.Value += lines;
+            this.accumulatedDelta = 0;
 
-                this.termContainer.UserScroll((int)this.scrollbar.Value);
-            });
+            this.termContainer.UserScroll((int)this.scrollbar.Value);
         }
 
         private void TermControl_TerminalScrolled(object sender, (int viewTop, int viewHeight, int bufferSize) e)
         {
+            // OnScroll fires from the connection's background read thread for every chunk of
+            // output the child process produces - for a chatty or long-running session that can
+            // be many times a second, and with several sessions running at once each has its own
+            // thread racing to queue a dispatcher callback here. Without coalescing, the queue
+            // grows without bound and both this update and the user's own wheel/thumb input end
+            // up stuck behind an ever-growing backlog - which is what made scrolling look like it
+            // had stopped working entirely. Keep only the latest update and never have more than
+            // one dispatcher callback pending at a time.
+            lock (this.scrollUpdateLock)
+            {
+                this.pendingScrollUpdate = e;
+
+                if (this.scrollUpdatePending)
+                {
+                    return;
+                }
+
+                this.scrollUpdatePending = true;
+            }
+
             this.Dispatcher.InvokeAsync(() =>
             {
+                (int viewTop, int viewHeight, int bufferSize) update;
+                lock (this.scrollUpdateLock)
+                {
+                    update = this.pendingScrollUpdate;
+                    this.scrollUpdatePending = false;
+                }
+
                 this.scrollbar.Minimum = 0;
-                this.scrollbar.Maximum = e.bufferSize - e.viewHeight;
-                this.scrollbar.Value = e.viewTop;
-                this.scrollbar.ViewportSize = e.viewHeight;
+                this.scrollbar.Maximum = update.bufferSize - update.viewHeight;
+                this.scrollbar.Value = update.viewTop;
+                this.scrollbar.ViewportSize = update.viewHeight;
             });
         }
 
