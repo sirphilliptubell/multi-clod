@@ -1,3 +1,4 @@
+using MultiClod.App.Context;
 using MultiClod.App.Validation;
 using TUnit.Assertions;
 using TUnit.Assertions.Extensions;
@@ -31,5 +32,21 @@ public sealed class ClaudeProjectPathTests
 
         await Assert.That(path).EndsWith($"{sessionId}.jsonl");
         await Assert.That(path).Contains("C---Gits-GS-Github-multi-claude");
+    }
+
+    // ClaudeConfigDirectory.Root is a static readonly resolved once per process, so this can only
+    // assert against whatever CLAUDE_CONFIG_DIR (or its ~/.claude default) already was when the
+    // test process started - it can't override it mid-run. Still enough to pin the actual
+    // regression: GetSessionFilePath must be built from ClaudeConfigDirectory.Root, not an
+    // independent ~/.claude join that would silently diverge from it whenever CLAUDE_CONFIG_DIR is
+    // set.
+    [Test]
+    public async Task GetSessionFilePath_UsesClaudeConfigDirectoryRoot_NotAnIndependentClaudeJoin()
+    {
+        var sessionId = Guid.NewGuid();
+        var path = ClaudeProjectPath.GetSessionFilePath(@"C:\_Gits-GS-Github\multi-claude", sessionId);
+
+        var expectedProjectDir = Path.Combine(ClaudeConfigDirectory.Root, "projects", "C---Gits-GS-Github-multi-claude");
+        await Assert.That(path).IsEqualTo(Path.Combine(expectedProjectDir, $"{sessionId}.jsonl"));
     }
 }
