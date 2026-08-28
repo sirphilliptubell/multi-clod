@@ -40,12 +40,31 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                <!-- A Canvas, not a Grid: WPF applies an automatic "layout clip" to a child whose
+                     Arrange size ends up smaller than what it asked for at Measure time, and a
+                     fixed-size Grid (as this was) gives every child exactly its own 10x10 bounds
+                     as that Arrange size regardless of ClipToBounds (which was already, and still
+                     is, unset/false - this clip is a separate mechanism). WorkingSpinner's 16x16
+                     therefore got Arranged into a 10x10 slot and clipped down to whatever of its
+                     geometry fell inside that box - four small corner fragments of the ring - which
+                     is the "spinning square" both the original dashed-Ellipse design (confirmed by
+                     rendering that exact old markup standalone) and the newer arc-based Path
+                     (confirmed the same way) actually were the whole time; the dash-cap-shape theory
+                     the old Path comment argued for was never the real cause. A Canvas sidesteps
+                     this because it measures children with infinite available size and Arranges
+                     each one at exactly its own DesiredSize - never smaller - so nothing this Canvas
+                     hosts, however larger than the nominal 10x10, is clipped. Canvas.Left/Top below
+                     substitute for the HorizontalAlignment/VerticalAlignment="Center" this used
+                     when it was a Grid (Canvas ignores both): each child is positioned by hand at
+                     (10 - child width)/2, (10 - child height)/2 to keep the same centering - e.g.
+                     WorkingSpinner's -3,-3 for its 16x16 size, StatusDot's -1,-1 for its 12x12 size.
+                     Recompute those if any child's size changes. -->
+                <Canvas Grid.Column="0" Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
                     <!-- IsHollow (NotStarted/Exited/Dormant) swaps Fill for Transparent below, leaving just the Stroke outline. -->
-                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="{Binding StatusBrush}"
+                    <Ellipse x:Name="StatusDot" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Fill="{Binding StatusBrush}"
                              Stroke="{Binding StatusBrush}" StrokeThickness="1.5" />
                     <!-- Rotating dashed ring stands in for the dot while the session is Starting - see the IsStarting trigger below. -->
-                    <Ellipse x:Name="StatusSpinner" Width="10" Height="10" Visibility="Collapsed"
+                    <Ellipse x:Name="StatusSpinner" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Visibility="Collapsed"
                              Stroke="Goldenrod" StrokeThickness="1.5" StrokeDashArray="2 1.5"
                              RenderTransformOrigin="0.5,0.5">
                         <Ellipse.RenderTransform>
@@ -54,23 +73,66 @@
                     </Ellipse>
                     <!-- Solid (non-dashed) ring in violet signals Claude actively working on a
                          turn - distinct in both color and dash pattern from the goldenrod dashed
-                         IsStarting spinner above. See the Activity==Working trigger below. -->
-                    <Ellipse x:Name="WorkingSpinner" Width="10" Height="10" Visibility="Collapsed"
-                             Stroke="MediumPurple" StrokeThickness="1.5" StrokeDashArray="3 1"
-                             RenderTransformOrigin="0.5,0.5">
-                        <Ellipse.RenderTransform>
+                         IsStarting spinner above. See the Activity==Working trigger below. Four
+                         explicit 60-degree arcs with 30-degree gaps (via Path/ArcSegment, one
+                         PathFigure per arc) rather than an Ellipse with StrokeDashArray, whose flat
+                         (non-round) dash-end caps, cut perpendicular to the path, read as a square's
+                         corner rather than a dash at this thickness:radius ratio. Round line caps
+                         soften the arc endpoints so the gaps read as gaps, not more corners. A first
+                         attempt used a 75/15 degree arc/gap split (matching the old dashed Ellipse's
+                         dash:gap ratio) but rendered to a PNG at this control's actual 16x16 size,
+                         that gap all but disappears into anti-aliasing - it reads as a near-solid
+                         ring, not 4 separate arcs; 60/30 (rendered and confirmed legible at 16x16
+                         before committing this) is the narrowest gap that still reads clearly here -
+                         don't go back to a smaller gap without re-rendering it standalone to check.
+                         Points below are literal (not templated) because they're derived from this
+                         Ellipse's own former geometry - cx=cy=8 (center of the 16x16 box) and r=6.8
+                         (radius to the stroke's centerline, i.e. (16 - StrokeThickness) / 2 with
+                         StrokeThickness=2.4, matching the old Ellipse's ring) - so recompute all 8
+                         (x,y) pairs if either changes. Four 60-degree arcs with four 30-degree gaps
+                         make up the full circle (4*60 + 4*30 = 360); IsLargeArc=0 since each arc is
+                         under 180 degrees, and SweepDirection=1 (clockwise) since angles increase
+                         clockwise on screen (y-down). -->
+                    <Path x:Name="WorkingSpinner" Canvas.Left="-3" Canvas.Top="-3" Width="16" Height="16" Visibility="Collapsed"
+                          Stretch="None" Stroke="MediumPurple" StrokeThickness="2.4"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M14.568,9.760 A6.8,6.8 0 0 1 9.760,14.568
+                                M6.240,14.568 A6.8,6.8 0 0 1 1.432,9.760
+                                M1.432,6.240 A6.8,6.8 0 0 1 6.240,1.432
+                                M9.760,1.432 A6.8,6.8 0 0 1 14.568,6.240"
+                          RenderTransformOrigin="0.5,0.5">
+                        <Path.RenderTransform>
                             <RotateTransform x:Name="WorkingSpinnerRotate" Angle="0" />
-                        </Ellipse.RenderTransform>
-                    </Ellipse>
+                        </Path.RenderTransform>
+                    </Path>
+                    <!-- How many background agents are running, overlaid in the spinner's own
+                         hollow center - empty text (see SessionNodeViewModel.BackgroundTaskBadgeText)
+                         while there's nothing to show, so a session with no background agents just
+                         gets a plain spinner. Same Orange as DoneGlyph's checkmark rather than the
+                         ring's MediumPurple, since that's what needs to be legible at this size, not
+                         color-matched to the ring around it. Doesn't rotate with the ring - only the
+                         ring's Stroke does (RenderTransform on WorkingSpinner itself). Wrapped in its
+                         own 10x10 Grid (rather than a bare TextBlock, as before the Canvas switch)
+                         because Canvas doesn't stretch children to fill it the way the old Grid did -
+                         without an explicitly-sized container to center within, the auto-sized
+                         TextBlock's HorizontalAlignment/VerticalAlignment="Center" would have nothing
+                         to center against. -->
+                    <Grid Canvas.Left="0" Canvas.Top="0" Width="10" Height="10">
+                        <TextBlock x:Name="BackgroundTaskBadge" Text="{Binding BackgroundTaskBadgeText}"
+                                   FontSize="11" FontWeight="Bold" Foreground="Orange"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="1,-1,0,0" />
+                    </Grid>
                     <!-- Latches until the user re-selects this session - see
-                         SessionNodeViewModel.ClearLatchedActivity. -->
-                    <Grid x:Name="NeedsInputGlyph" Visibility="Collapsed">
-                        <Ellipse Width="10" Height="10" Fill="Orange" />
-                        <TextBlock Text="?" FontSize="8" FontWeight="Bold" Foreground="Black"
+                         SessionNodeViewModel.ClearLatchedActivity. Explicit Width/Height for the same
+                         reason as BackgroundTaskBadge's wrapper Grid above - Canvas won't stretch it
+                         to 10x10 on its own. -->
+                    <Grid x:Name="NeedsInputGlyph" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Visibility="Collapsed">
+                        <Ellipse Width="12" Height="12" Fill="Orange" />
+                        <TextBlock Text="?" FontSize="10" FontWeight="Bold" Foreground="Black"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
-                    <Grid x:Name="DoneGlyph" Visibility="Collapsed">
-                        <TextBlock Text="&#10003;" FontSize="9" FontWeight="Bold" Foreground="Orange"
+                    <Grid x:Name="DoneGlyph" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Visibility="Collapsed">
+                        <TextBlock Text="&#10003;" FontSize="11" FontWeight="Bold" Foreground="Orange"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
                     </Grid>
                     <!-- Static (non-rotating) gray dashed ring - Claude Code's Stop hook never
@@ -80,9 +142,9 @@
                          rather than reusing WorkingSpinner's animation or NeedsInput/Done's glyphs.
                          Also latches until the user re-selects this session - see
                          SessionNodeViewModel.ClearLatchedActivity. -->
-                    <Ellipse x:Name="InterruptedGlyph" Width="10" Height="10" Visibility="Collapsed"
+                    <Ellipse x:Name="InterruptedGlyph" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Visibility="Collapsed"
                              Stroke="Gray" StrokeThickness="1.5" StrokeDashArray="3 1" />
-                </Grid>
+                </Canvas>
                 <TextBlock x:Name="SessionNameText" Grid.Column="1" Text="{Binding Name}"
                            Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />

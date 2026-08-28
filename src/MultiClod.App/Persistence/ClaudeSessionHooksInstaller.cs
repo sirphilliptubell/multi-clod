@@ -68,17 +68,19 @@ public sealed class ClaudeSessionHooksInstaller
             hooks = new
             {
                 UserPromptSubmit = new[] { CommandHook("Working") },
-                Stop = new[] { CommandHook("Stop") },
                 Notification = new[]
                 {
                     MatcherHook("agent_needs_input", "NeedsInputSticky"),
                     MatcherHook("permission_prompt", "NeedsInputTransient"),
                 },
-                // Task tool calls still outstanding when Stop fires are effectively background
-                // agents from this app's perspective (a blocking Task call would already have
-                // returned before Stop fires) - see TerminalSession's pendingBackgroundTasks.
-                PreToolUse = new[] { MatcherHook("Task", "TaskStart") },
-                SubagentStop = new[] { CommandHook("TaskEnd") },
+                // Both of these carry Claude Code's own background_tasks list, which is what the
+                // background-agent spinner is driven from - see claude-session-signal.ps1. There's
+                // deliberately no PreToolUse hook counting Task calls anymore: the list is
+                // authoritative and self-correcting, so inferring the same thing from start/end
+                // events was both redundant and drift-prone, and it depended on "Task" matching a
+                // tool Claude Code now reports as "Agent".
+                Stop = new[] { CommandHook("Stop") },
+                SubagentStop = new[] { CommandHook("BackgroundSync") },
             },
         };
 

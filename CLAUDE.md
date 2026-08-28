@@ -27,6 +27,24 @@ installed Release copy at `%LOCALAPPDATA%\MultiClod.App\current\MultiClod.App.ex
 Debug build's window also gets a `" (Debug)"` title suffix and a visible border
 (`MainWindow.xaml.cs`, `#if DEBUG`).
 
+### Driving a throwaway instance for manual testing
+
+Debug and Release share one data root (`~/.multi-clod`), so a Debug build launched as-is restores
+and relaunches whatever sessions the Release install already has open - duplicating live `claude`
+processes against them. Set **`MULTICLOD_DATA_DIR`** to point an instance at a scratch directory
+instead (`MultiClodDataDirectory.Root`); it gets its own `sessions.json`, hooks file and
+`debug-*.log`s, and touches nothing real. Unset, behavior is unchanged.
+
+Two gotchas when scripting this:
+
+- **Launch it detached** (PowerShell `Start-Process`), *not* as a backgrounded shell job. Under a
+  job with no real console the embedded `claude` dies instantly with exit code 1 and an empty
+  terminal pane (see `session-diagnostics.log`).
+- Single-instance enforcement is per-configuration, so a *second* Debug launch hands off to the
+  first one - which still has the *first* one's `MULTICLOD_DATA_DIR`. Close the previous instance
+  (filtering by path, per below) before launching another, or its logs will land in the old
+  directory.
+
 **When checking for or stopping MultiClod processes, always filter by full path (or the window
 title), never by bare process name** - e.g. `Get-Process | Where-Object { $_.Path -like
 '*bin\x64\Debug*' }`, not `Get-Process -Name MultiClod.App` or `Stop-Process -Name MultiClod.App`.

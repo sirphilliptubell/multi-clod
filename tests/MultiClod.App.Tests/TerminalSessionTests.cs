@@ -88,71 +88,168 @@ public sealed class TerminalSessionTests
     }
 
     [Test]
-    public async Task ApplyTitle_StopWithPendingTask_DefersDoneUntilTaskEnd()
+    public async Task ApplyTitle_StopWithBackgroundTaskRunning_DefersDoneUntilItFinishes()
     {
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
         session.ApplyTitle("MULTICLOD:|Working");
-        session.ApplyTitle("MULTICLOD:|TaskStart");
-        session.ApplyTitle("MULTICLOD:|Stop");
+        session.ApplyTitle("MULTICLOD:|Stop::1");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
 
-        session.ApplyTitle("MULTICLOD:|TaskEnd");
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
     }
 
     [Test]
-    public async Task ApplyTitle_TaskEndBeforeStop_DoesNotPrematurelySetDone()
+    public async Task BackgroundTaskCount_TracksReportedValueAndRaisesPropertyChanged()
     {
-        // A Task call that starts and finishes mid-turn (well before Stop) shouldn't flip the
-        // icon on its own - only a Stop that's actually waiting on the counter should.
+        // The count backing MainWindow.xaml's spinner badge - see
+        // SessionNodeViewModel.BackgroundTaskBadgeText. Must move independently of Activity (2 -> 1
+        // outstanding agents is not an Activity change) and still notify.
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var raisedProperties = new List<string?>();
+        session.PropertyChanged += (_, e) => raisedProperties.Add(e.PropertyName);
 
         session.ApplyTitle("MULTICLOD:|Working");
-        session.ApplyTitle("MULTICLOD:|TaskStart");
-        session.ApplyTitle("MULTICLOD:|TaskEnd");
+        session.ApplyTitle("MULTICLOD:|Stop::2");
 
+        await Assert.That(session.BackgroundTaskCount).IsEqualTo(2);
+        await Assert.That(raisedProperties).Contains(nameof(TerminalSession.BackgroundTaskCount));
+
+        raisedProperties.Clear();
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::1");
+
+        await Assert.That(session.BackgroundTaskCount).IsEqualTo(1);
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+        await Assert.That(raisedProperties).Contains(nameof(TerminalSession.BackgroundTaskCount));
+        await Assert.That(raisedProperties).DoesNotContain(nameof(TerminalSession.Activity));
     }
 
     [Test]
-    public async Task ApplyTitle_MultiplePendingTasks_WaitsForAllToEnd()
+    public async Task ApplyTitle_StopWithNoBackgroundTasks_SetsDoneImmediately()
     {
+        // A turn whose subagents all finished before it ended reports a count of zero, and must
+        // behave exactly like a turn that never spawned one.
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
         session.ApplyTitle("MULTICLOD:|Working");
-        session.ApplyTitle("MULTICLOD:|TaskStart");
-        session.ApplyTitle("MULTICLOD:|TaskStart");
-        session.ApplyTitle("MULTICLOD:|Stop");
-        session.ApplyTitle("MULTICLOD:|TaskEnd");
-
-        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
-
-        session.ApplyTitle("MULTICLOD:|TaskEnd");
+        session.ApplyTitle("MULTICLOD:|Stop::0");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
     }
 
     [Test]
-    public async Task ApplyTitle_StickyNeedsInputWithPendingTask_StaysNeedsInput()
+    public async Task ApplyTitle_MultipleBackgroundTasks_WaitsForAllToFinish()
     {
-        // The NeedsInput sticky still takes priority over a pending background task - Stop for
-        // the same turn that asked a question shouldn't be deferred into a later Done.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop::2");
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::1");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_BackgroundCountIsLevelNotDelta_SoALostSignalSelfCorrects()
+    {
+        // The whole reason the count is re-read from Claude Code's background_tasks list on every
+        // firing rather than accumulated: a hook subprocess that dies without ever reporting (a
+        // known Windows issue) must not leave the session wedged on a spinner forever. The next
+        // report that does land is trusted outright.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop::3");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+
+        // Nothing reported 2 or 1 - they were lost. A single accurate report still settles it.
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_StopWithoutBackgroundCount_KeepsLastKnownCount()
+    {
+        // A Claude Code build that doesn't report background_tasks at all (or a hook whose stdin
+        // JSON failed to parse) leaves the field off entirely - which must not be read as zero and
+        // clear a spinner for work that is still running.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop::2");
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+    }
+
+    [Test]
+    public async Task ApplyTitle_StickyNeedsInputWithBackgroundTask_StaysNeedsInput()
+    {
+        // A question Claude actually asked the user outranks background work - it's the one state
+        // where the session is blocked on them rather than merely still busy.
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
         var promptId = Guid.NewGuid().ToString();
 
         session.ApplyTitle("MULTICLOD:|Working");
-        session.ApplyTitle("MULTICLOD:|TaskStart");
         session.ApplyTitle($"MULTICLOD:|NeedsInputSticky:{promptId}");
-        session.ApplyTitle($"MULTICLOD:|Stop:{promptId}");
+        session.ApplyTitle($"MULTICLOD:|Stop:{promptId}:1");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
 
-        session.ApplyTitle("MULTICLOD:|TaskEnd");
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
+    }
+
+    [Test]
+    public async Task ApplyTitle_PermissionPromptAfterTurnEnded_DoesNotClobberBackgroundSpinner()
+    {
+        // Regression for the reported bug: a background agent's own permission prompt arrives after
+        // the foreground turn already ended, and used to latch the icon on NeedsInput for the whole
+        // (here, minutes-long) run of the agent, then jump straight to Done. Verified against a real
+        // captured hook sequence - Working, Stop(1 background task), permission_prompt, then nothing
+        // at all until the agent finished.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var promptId = Guid.NewGuid().ToString();
+
+        session.ApplyTitle($"MULTICLOD:|Working:{promptId}");
+        session.ApplyTitle($"MULTICLOD:|Stop:{promptId}:1");
+        session.ApplyTitle($"MULTICLOD:|NeedsInputTransient:{promptId}");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
+    }
+
+    [Test]
+    public async Task ApplyTitle_PermissionPromptDuringTurn_StillShowsNeedsInput()
+    {
+        // The counterpart to the above: a prompt raised while the foreground turn is genuinely
+        // in flight is a real "go look at this session" signal and must still show, since that
+        // turn's own Stop is guaranteed to clear it.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+        var promptId = Guid.NewGuid().ToString();
+
+        session.ApplyTitle($"MULTICLOD:|Working:{promptId}");
+        session.ApplyTitle($"MULTICLOD:|NeedsInputTransient:{promptId}");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.NeedsInput);
+
+        session.ApplyTitle($"MULTICLOD:|Stop:{promptId}:0");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Done);
     }
 
     [Test]
@@ -232,19 +329,17 @@ public sealed class TerminalSessionTests
     [Test]
     public async Task HandleInterruptDetected_WithPendingBackgroundTask_DoesNotLaterFlipToDone()
     {
-        // An interrupted turn abandons whatever Task calls it had outstanding - a TaskEnd that
-        // straggles in afterward shouldn't resurrect the old Stop-is-waiting state and flip to
-        // Done once the counter (spuriously) drains.
+        // An interrupted turn abandons whatever background agents it had outstanding - a later
+        // report that they've drained shouldn't resurrect the old turn's deferred Done.
         var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
 
         session.ApplyTitle("MULTICLOD:|Working");
-        session.ApplyTitle("MULTICLOD:|TaskStart");
-        session.ApplyTitle("MULTICLOD:|Stop");
+        session.ApplyTitle("MULTICLOD:|Stop::1");
         session.HandleInterruptDetected();
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Interrupted);
 
-        session.ApplyTitle("MULTICLOD:|TaskEnd");
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
 
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Interrupted);
     }

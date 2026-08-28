@@ -97,6 +97,16 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
     // see SessionRecord.LastActivity and OnLiveSessionPropertyChanged, the only writer.
     public SessionActivity LastActivity => this.lastActivity;
 
+    // The count to overlay in the middle of the tree's Working spinner (see MainWindow.xaml's
+    // WorkingSpinner template) - "" while there's nothing to show, rather than "0", so a session
+    // with no background agents just shows a plain spinner. Gated on Activity == Working (rather
+    // than showing whenever the count is nonzero) so a count left over from a background agent
+    // that's still running underneath a NeedsInput question - see SessionActivityTracker's
+    // priority ordering - doesn't appear to belong to the wrong glyph.
+    public string BackgroundTaskBadgeText => this.Activity == SessionActivity.Working && this.liveSession is { BackgroundTaskCount: > 0 } session
+        ? session.BackgroundTaskCount.ToString()
+        : string.Empty;
+
     // Called when the tree selection lands on this session - no-ops for a dormant node.
     public void ClearLatchedActivity() => this.liveSession?.ClearLatchedActivity();
 
@@ -172,6 +182,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.RaisePropertyChanged(nameof(this.IsHollow));
         this.RaisePropertyChanged(nameof(this.IsStarting));
         this.RaisePropertyChanged(nameof(this.Activity));
+        this.RaisePropertyChanged(nameof(this.BackgroundTaskBadgeText));
         this.RaisePropertyChanged(nameof(this.ToolTipText));
         this.RaisePropertyChanged(nameof(this.DisplayTitle));
     }
@@ -199,6 +210,7 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
         this.RaisePropertyChanged(nameof(this.IsHollow));
         this.RaisePropertyChanged(nameof(this.IsStarting));
         this.RaisePropertyChanged(nameof(this.Activity));
+        this.RaisePropertyChanged(nameof(this.BackgroundTaskBadgeText));
         this.RaisePropertyChanged(nameof(this.ToolTipText));
         this.RaisePropertyChanged(nameof(this.DisplayTitle));
     }
@@ -232,6 +244,14 @@ public sealed class SessionNodeViewModel : TreeNodeViewModel
             }
 
             this.RaisePropertyChanged(nameof(this.Activity));
+
+            // BackgroundTaskBadgeText is gated on Activity == Working (see its own remarks), so it
+            // can change here even though BackgroundTaskCount itself didn't move.
+            this.RaisePropertyChanged(nameof(this.BackgroundTaskBadgeText));
+        }
+        else if (e.PropertyName == nameof(TerminalSession.BackgroundTaskCount))
+        {
+            this.RaisePropertyChanged(nameof(this.BackgroundTaskBadgeText));
         }
         else if (e.PropertyName == nameof(TerminalSession.DetectedTitle) && this.liveSession is { } session)
         {

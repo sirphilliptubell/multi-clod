@@ -38,40 +38,14 @@ public sealed class TerminalSession : INotifyPropertyChanged
     private Brush statusBrush = StartingBrush;
     private bool isHollow;
     private string? detectedTitle;
-    private SessionActivity activity = SessionActivity.Idle;
     private Guid? observedClaudeSessionId;
 
-    // The prompt_id that set the current NeedsInput sticky (from the agent_needs_input
-    // Notification - Claude asked a question), or null if there is none / it came from
-    // permission_prompt (a transient mid-turn block) instead - see OnHostTitleChanged. Keyed on
-    // prompt_id rather than a plain bool so a Stop is only suppressed when it belongs to the exact
-    // turn that's latched: two independently-spawned hook subprocesses (this one and the
-    // UserPromptSubmit one for whatever turn follows) aren't guaranteed to land in the PTY stream
-    // in firing order, so a bool cleared by "Working" could still be stale when a later Stop reads
-    // it, leaving the icon stuck on NeedsInput through an actually-completed later turn.
-    private string? stickyNeedsInputPromptId;
-
-    // The prompt_id of the turn currently in flight (set by "Working", i.e. UserPromptSubmit) -
-    // guards "Stop" against a stale hook straggler from an OLDER, already-superseded turn. Claude
-    // Code hooks run as separate OS subprocesses (powershell.exe here) and are known to
-    // occasionally hang/get suspended on Windows (see anthropics/claude-code#77078); if one
-    // finally completes long after its turn ended - after the user has already sent a new
-    // message and a fresh "Working" landed - its "Stop" would otherwise unconditionally clobber
-    // the new turn's Working back to Done/Idle. Null (rather than empty) whenever no promptId is
-    // available (older Claude Code versions, or a hook whose stdin JSON failed to parse), which
-    // keeps the guard below a no-op in exactly the same cases it always was.
-    private string? currentTurnPromptId;
-
-    // Count of Task tool calls (PreToolUse "TaskStart") not yet matched by a SubagentStop
-    // ("TaskEnd"). Any Task call still outstanding when Stop fires is treated as a background
-    // agent - see ClaudeSessionHooksInstaller. Plain in-memory field, same as activity: a restart
-    // kills the whole process tree (ConPtyConnection.Dispose), so starting back at 0 is always
+    // Owns every fact behind the Activity glyph, and the priority rules that reduce them to one
+    // value - see SessionActivityTracker for why those are kept apart from the displayed enum
+    // rather than each hook assigning to it directly. Plain in-memory, same as before: a restart
+    // kills the whole process tree (ConPtyConnection.Dispose), so starting from scratch is always
     // correct rather than something that needs to survive a relaunch.
-    private int pendingBackgroundTasks;
-
-    // Set when a Stop arrives while pendingBackgroundTasks > 0, so the delayed Done transition
-    // (once the counter drains) knows to fire - see OnHostTitleChanged's "TaskEnd"/"Stop" cases.
-    private bool awaitingBackgroundCompletion;
+    private readonly SessionActivityTracker tracker = new();
 
     // initialActivity seeds this session's glyph with its node's last-persisted settled state
     // (see SessionNodeViewModel.LastActivity) - LaunchSession relaunches every previously-started
@@ -82,7 +56,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
     {
         this.WorkingDirectory = workingDirectory;
         this.Host = host;
-        this.activity = initialActivity;
+        this.tracker.Seed(initialActivity);
         this.Host.StateChanged += this.OnHostStateChanged;
         this.Host.TitleChanged += this.OnHostTitleChanged;
         this.Host.InterruptDetected += this.OnHostInterruptDetected;
@@ -128,11 +102,14 @@ public sealed class TerminalSession : INotifyPropertyChanged
 
     // What the Claude Code process inside this session is doing right now, per its own hooks -
     // see OnHostTitleChanged. Only meaningful while State == Running; reset to Idle otherwise.
-    public SessionActivity Activity
-    {
-        get => this.activity;
-        private set => this.SetField(ref this.activity, value);
-    }
+    // Derived rather than stored - see SessionActivityTracker.
+    public SessionActivity Activity => this.tracker.Activity;
+
+    // How many background agents are running right now - see SessionActivityTracker's own remarks
+    // and SessionNodeViewModel.BackgroundTaskBadgeText for where this actually gets shown. Can
+    // change independently of Activity (e.g. 2 -> 1 outstanding agents while still Working), which
+    // is why MutateActivity diffs this separately rather than only the derived enum.
+    public int BackgroundTaskCount => this.tracker.OutstandingBackgroundTasks;
 
     // Claude Code's own live session_id, as last reported by a hook firing - see OnHostTitleChanged.
     // Null until the first hook fires. MainWindow.LaunchSession compares this against the owning
@@ -146,12 +123,28 @@ public sealed class TerminalSession : INotifyPropertyChanged
 
     // Clears a latched NeedsInput/Done back to Idle once the user looks at this session again -
     // called from SessionNodeViewModel when the tree selection lands on this session. Never
-    // interrupts Working, since that reflects Claude actually being mid-turn right now.
-    public void ClearLatchedActivity()
+    // interrupts work that's genuinely still in flight - see SessionActivityTracker.MarkSeen.
+    public void ClearLatchedActivity() => this.MutateActivity(t => t.MarkSeen());
+
+    // Every Activity/BackgroundTaskCount change funnels through here so each derived value is
+    // compared before and after (rather than each caller trying to work out whether its own signal
+    // happened to move it) and PropertyChanged is raised exactly when one actually moved. The two
+    // are diffed independently since the count can change (2 -> 1 outstanding agents) without
+    // Activity itself moving off Working.
+    private void MutateActivity(Action<SessionActivityTracker> change)
     {
-        if (this.Activity is SessionActivity.NeedsInput or SessionActivity.Done or SessionActivity.Interrupted)
+        var activityBefore = this.tracker.Activity;
+        var countBefore = this.tracker.OutstandingBackgroundTasks;
+        change(this.tracker);
+
+        if (this.tracker.Activity != activityBefore)
         {
-            this.Activity = SessionActivity.Idle;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.Activity)));
+        }
+
+        if (this.tracker.OutstandingBackgroundTasks != countBefore)
+        {
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.BackgroundTaskCount)));
         }
     }
 
@@ -187,66 +180,40 @@ public sealed class TerminalSession : INotifyPropertyChanged
             this.ObservedClaudeSessionId = sessionId;
         }
 
-        // "Kind" and "Kind:promptId" - see claude-session-signal.ps1. Every marker carries a
-        // promptId whenever the hook's own stdin JSON included one (Claude Code v2.1.196+ sends
-        // prompt_id on every hook event for a turn, Working/Stop included - confirmed against real
-        // debug-hooks-*.log captures); older Claude Code versions or a hook whose stdin JSON
-        // failed to parse just leave it null. A real Claude Code prompt_id is a UUID, so it never
-        // contains ':' itself.
-        var colonIndex = marker.IndexOf(':');
-        var kind = colonIndex < 0 ? marker : marker[..colonIndex];
-        var promptId = colonIndex < 0 ? null : marker[(colonIndex + 1)..];
+        // "Kind", "Kind:promptId" and "Kind:promptId:backgroundTaskCount" - see
+        // claude-session-signal.ps1. Every marker carries a promptId whenever the hook's own stdin
+        // JSON included one (Claude Code v2.1.196+ sends prompt_id on every hook event for a turn,
+        // Working/Stop included - confirmed against real debug-hooks-*.log captures); older Claude
+        // Code versions or a hook whose stdin JSON failed to parse just leave it empty. A real
+        // Claude Code prompt_id is a UUID, so neither field can contain ':' itself.
+        var fields = marker.Split(':');
+        var kind = fields[0];
+        var promptId = fields.Length > 1 && fields[1].Length > 0 ? fields[1] : null;
+
+        // Absent (rather than zero) whenever Claude Code didn't report a background_tasks list at
+        // all - the tracker then keeps whatever it last knew instead of assuming nothing is running.
+        var backgroundTasks = fields.Length > 2 && int.TryParse(fields[2], out var parsed) ? parsed : (int?)null;
 
         switch (kind)
         {
             case "Working":
-                this.currentTurnPromptId = promptId;
-                this.awaitingBackgroundCompletion = false;
-                this.Activity = SessionActivity.Working;
+                this.MutateActivity(t => t.OnTurnStarted(promptId));
                 break;
             case "NeedsInputSticky":
-                this.stickyNeedsInputPromptId = promptId;
-                this.Activity = SessionActivity.NeedsInput;
+                this.MutateActivity(t => t.OnQuestionAsked(promptId));
                 break;
             case "NeedsInputTransient":
-                this.Activity = SessionActivity.NeedsInput;
-                break;
-            case "TaskStart":
-                this.pendingBackgroundTasks++;
-                break;
-            case "TaskEnd":
-                this.pendingBackgroundTasks = Math.Max(0, this.pendingBackgroundTasks - 1);
-                if (this.pendingBackgroundTasks == 0 && this.awaitingBackgroundCompletion)
-                {
-                    this.awaitingBackgroundCompletion = false;
-                    this.Activity = SessionActivity.Done;
-                }
-
+                this.MutateActivity(t => t.OnPermissionPromptRaised());
                 break;
             case "Stop":
-                // Ignore a Stop that belongs to an OLDER turn than the one currently in flight -
-                // see currentTurnPromptId's remarks. Only rejected on a definite mismatch (both
-                // known and different); a null on either side falls through and is trusted as
-                // before, since that's the only signal we have when promptId isn't available.
-                if (this.currentTurnPromptId is null || promptId is null || this.currentTurnPromptId == promptId)
+                this.MutateActivity(t => t.OnTurnEnded(promptId, backgroundTasks));
+                break;
+            case "BackgroundSync":
+                // SubagentStop, carrying how many background agents are still running now that this
+                // one has finished. Nothing to do if the count didn't come through - see above.
+                if (backgroundTasks is { } remaining)
                 {
-                    // A sticky "Claude asked a question" is never silently overwritten by the
-                    // Stop hook that always fires at turn-end for that same turn (matched by
-                    // promptId); a transient permission-prompt block, or a Stop for any later
-                    // turn (a different/absent promptId - e.g. once the user has replied), is
-                    // free to move on to Done - unless a Task tool call from this turn is still
-                    // outstanding, in which case Done is deferred to the "TaskEnd" case above.
-                    if (this.stickyNeedsInputPromptId is null || this.stickyNeedsInputPromptId != promptId)
-                    {
-                        if (this.pendingBackgroundTasks > 0)
-                        {
-                            this.awaitingBackgroundCompletion = true;
-                        }
-                        else
-                        {
-                            this.Activity = SessionActivity.Done;
-                        }
-                    }
+                    this.MutateActivity(t => t.OnBackgroundTasksReported(remaining));
                 }
 
                 break;
@@ -271,9 +238,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
         // clobbering those.
         if (this.Activity == SessionActivity.Working)
         {
-            this.pendingBackgroundTasks = 0;
-            this.awaitingBackgroundCompletion = false;
-            this.Activity = SessionActivity.Interrupted;
+            this.MutateActivity(t => t.OnInterrupted());
         }
     }
 
@@ -308,11 +273,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
             // latched icon rather than have it linger over a dead/restarted session.
             if (state != SessionState.Running)
             {
-                this.stickyNeedsInputPromptId = null;
-                this.currentTurnPromptId = null;
-                this.pendingBackgroundTasks = 0;
-                this.awaitingBackgroundCompletion = false;
-                this.Activity = SessionActivity.Idle;
+                this.MutateActivity(t => t.Reset());
             }
         });
     }

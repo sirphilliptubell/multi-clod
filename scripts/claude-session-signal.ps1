@@ -29,16 +29,38 @@ param(
 $stdin = [Console]::In.ReadToEnd()
 $promptId = $null
 $sessionId = $null
+$backgroundCount = $null
 $parseError = $null
 try
 {
     $payload = $stdin | ConvertFrom-Json -ErrorAction Stop
     $promptId = $payload.prompt_id
     $sessionId = $payload.session_id
+
+    # Claude Code puts the full list of still-running background agents on every Stop and
+    # SubagentStop payload, so the count is read straight from the source on each firing rather than
+    # accumulated from separate start/end events. That matters because an accumulated count drifts
+    # permanently out of true the first time a hook subprocess dies without firing (a known Windows
+    # issue - see anthropics/claude-code#77078), and drifting in the "still running" direction wedges
+    # the session on a spinner nothing can ever clear. PSObject.Properties, not a null test: the
+    # field being absent (an older Claude Code) has to stay distinguishable from it being empty.
+    if ($payload.PSObject.Properties.Name -contains 'background_tasks')
+    {
+        $tasks = @($payload.background_tasks)
+
+        # SubagentStop still lists the very agent that just stopped as "running", so exclude it -
+        # otherwise the count never reaches zero until some later event happens to report it.
+        if ($payload.agent_id)
+        {
+            $tasks = @($tasks | Where-Object { $_.id -ne $payload.agent_id })
+        }
+
+        $backgroundCount = $tasks.Count
+    }
 }
 catch
 {
-    # Malformed/missing JSON on stdin - both just stay $null, which is fine for markers that don't
+    # Malformed/missing JSON on stdin - these just stay $null, which is fine for markers that don't
     # need promptId (Working/NeedsInputTransient) and degrades safely for the ones that do; omitting
     # the session-id sequence entirely just means this particular hook firing doesn't correct drift.
     $parseError = $_.Exception.Message
@@ -48,7 +70,7 @@ if ($DebugLogPath)
 {
     try
     {
-        $line = "[$(Get-Date -Format o)] Marker=$Marker PID=$PID promptId=$promptId sessionId=$sessionId parseError=$parseError stdin=$stdin"
+        $line = "[$(Get-Date -Format o)] Marker=$Marker PID=$PID promptId=$promptId sessionId=$sessionId backgroundCount=$backgroundCount parseError=$parseError stdin=$stdin"
         Add-Content -Path $DebugLogPath -Value $line -ErrorAction Stop
     }
     catch
@@ -59,7 +81,13 @@ if ($DebugLogPath)
 
 $esc = [char]27
 $bel = [char]7
-$suffix = if ($promptId) { "${Marker}:${promptId}" } else { $Marker }
+
+# "Marker", "Marker:promptId" or "Marker:promptId:backgroundCount" - TerminalSession.ApplyTitle
+# splits on ':' and treats either trailing field as absent when it's missing or empty. The count
+# needs the promptId slot held open (even when empty) so the fields stay positional.
+$suffix = $Marker
+if ($null -ne $backgroundCount) { $suffix = "${Marker}:${promptId}:${backgroundCount}" }
+elseif ($promptId) { $suffix = "${Marker}:${promptId}" }
 
 # session_id and the activity suffix are packed into ONE title as "<sessionId>|<suffix>" rather
 # than two separate OSC sequences - see the remarks above. sessionId is a plain GUID (no '|'), so
