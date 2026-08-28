@@ -9,6 +9,88 @@
              d:DesignWidth="800"
              Focusable="True"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <!--
+            Slim, auto-hiding scrollbar: no arrows/track chrome, just a thin rounded thumb that
+            stays almost invisible until the pointer is over the terminal (or the thumb itself),
+            so it reads as a lightweight overlay rather than the classic Windows scrollbar. It
+            still reserves a thin column rather than truly overlapping the terminal - WPF's
+            HwndHost (the native terminal renderer) always paints on top of sibling WPF content
+            within the same window ("airspace"), so a literal full-overlap thumb would be drawn
+            over by the terminal and never be visible.
+        -->
+        <SolidColorBrush x:Key="OverlayScrollThumbBrush" Color="White" Opacity="0.35" />
+        <SolidColorBrush x:Key="OverlayScrollThumbHoverBrush" Color="White" Opacity="0.55" />
+        <SolidColorBrush x:Key="OverlayScrollThumbDragBrush" Color="White" Opacity="0.75" />
+
+        <Style x:Key="OverlayScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="Background" Value="{StaticResource OverlayScrollThumbBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="3"
+                                Margin="2,0,1,0" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource OverlayScrollThumbHoverBrush}" />
+                </Trigger>
+                <Trigger Property="IsDragging" Value="True">
+                    <Setter Property="Background" Value="{StaticResource OverlayScrollThumbDragBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="OverlayScrollBarPageButtonStyle" TargetType="RepeatButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="OverlayScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                  Style="{StaticResource OverlayScrollBarPageButtonStyle}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                  Style="{StaticResource OverlayScrollBarPageButtonStyle}" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource OverlayScrollThumbStyle}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- Faint-to-invisible at rest; fully visible while the pointer is anywhere over
+                     the terminal (not just the thin scrollbar strip itself), or while dragging. -->
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsMouseOver, ElementName=terminalGrid}" Value="True">
+                    <Setter Property="Opacity" Value="1" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
     <Grid x:Name="terminalGrid">
         <Grid.ColumnDefinitions>
             <ColumnDefinition />
@@ -17,6 +99,7 @@
         <local:TerminalContainer x:Name="termContainer" />
         <ScrollBar x:Name="scrollbar"
                    Grid.Column="1"
+                   Style="{StaticResource OverlayScrollBarStyle}"
                    Scroll="Scrollbar_Scroll"
                    SmallChange="1" />
     </Grid>
