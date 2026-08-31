@@ -356,6 +356,72 @@ public sealed class TerminalSessionTests
         await Assert.That(session.Activity).IsEqualTo(SessionActivity.Idle);
     }
 
+    [Test]
+    public async Task HandleApiErrorDetected_WhileWorking_SetsError()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.HandleApiErrorDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Error);
+    }
+
+    [Test]
+    public async Task HandleApiErrorDetected_WhileNeedsInput_StillSetsError()
+    {
+        // Unlike HandleInterruptDetected, this isn't gated on Activity == Working - a dropped
+        // connection is a real "something broke" signal that should win regardless of what else
+        // was going on.
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|NeedsInputSticky:prompt");
+        session.HandleApiErrorDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Error);
+    }
+
+    [Test]
+    public async Task HandleApiErrorDetected_WithPendingBackgroundTask_DoesNotLaterFlipToDone()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.ApplyTitle("MULTICLOD:|Stop::1");
+        session.HandleApiErrorDetected();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Error);
+
+        session.ApplyTitle("MULTICLOD:|BackgroundSync::0");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Error);
+    }
+
+    [Test]
+    public async Task ClearLatchedActivity_WhileError_ResetsToIdle()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.HandleApiErrorDetected();
+        session.ClearLatchedActivity();
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Idle);
+    }
+
+    [Test]
+    public async Task ApplyTitle_NewTurnAfterApiError_ClearsError()
+    {
+        var session = new TerminalSession(Path.GetTempPath(), new FakeSessionHost());
+
+        session.ApplyTitle("MULTICLOD:|Working");
+        session.HandleApiErrorDetected();
+        session.ApplyTitle("MULTICLOD:|Working");
+
+        await Assert.That(session.Activity).IsEqualTo(SessionActivity.Working);
+    }
+
     // Minimal ISessionHost stub - TerminalSession's constructor only subscribes to
     // StateChanged/TitleChanged and never touches Pane, so Pane deliberately throws if a test ever
     // starts relying on it unexpectedly.
@@ -375,6 +441,8 @@ public sealed class TerminalSessionTests
         public event EventHandler<string>? TitleChanged;
 
         public event EventHandler? InterruptDetected;
+
+        public event EventHandler? ApiErrorDetected;
 #pragma warning restore CS0067
 
         public void Start(TerminalLaunchOptions options)

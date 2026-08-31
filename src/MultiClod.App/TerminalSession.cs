@@ -60,6 +60,7 @@ public sealed class TerminalSession : INotifyPropertyChanged
         this.Host.StateChanged += this.OnHostStateChanged;
         this.Host.TitleChanged += this.OnHostTitleChanged;
         this.Host.InterruptDetected += this.OnHostInterruptDetected;
+        this.Host.ApiErrorDetected += this.OnHostApiErrorDetected;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -241,6 +242,20 @@ public sealed class TerminalSession : INotifyPropertyChanged
             this.MutateActivity(t => t.OnInterrupted());
         }
     }
+
+    private void OnHostApiErrorDetected(object? sender, EventArgs e)
+    {
+        // Same cross-thread rationale as OnHostInterruptDetected/OnHostTitleChanged above.
+        Application.Current.Dispatcher.BeginInvoke(this.HandleApiErrorDetected);
+    }
+
+    // Split out from OnHostApiErrorDetected so tests can drive it directly, same rationale as
+    // ApplyTitle/HandleInterruptDetected. Unlike HandleInterruptDetected this isn't gated on
+    // Activity == Working - a dropped connection can be reported while the CLI is also mid-way
+    // through printing e.g. a permission prompt, and either way it's a real "something broke" that
+    // should win regardless of what else the tracker currently thinks is going on (see
+    // SessionActivityTracker.Activity's priority ordering).
+    internal void HandleApiErrorDetected() => this.MutateActivity(t => t.OnApiErrorDetected());
 
     private void OnHostStateChanged(object? sender, SessionState state)
     {

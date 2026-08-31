@@ -22,6 +22,12 @@ public interface IPtyConnection : IDisposable
     // TitleChanged.
     event EventHandler InterruptDetected;
 
+    // Raised when the child process's own screen output contains one of the CLI's "API Error: ..."
+    // lines (see ConPtyConnection.ScanForApiErrorMarker) - a best-effort text scan for the same
+    // reason as InterruptDetected: a turn that dies mid-response this way never gets a matching
+    // Stop hook either. Purely observational, same as TitleChanged/InterruptDetected.
+    event EventHandler ApiErrorDetected;
+
     void Start();
 
     void WriteInput(string data);

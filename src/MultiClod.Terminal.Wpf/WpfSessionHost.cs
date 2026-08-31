@@ -20,6 +20,8 @@ public sealed class WpfSessionHost : ISessionHost
 
     public event EventHandler<SessionState>? StateChanged;
 
+    public event EventHandler? ApiErrorDetected;
+
     public event EventHandler<string>? TitleChanged;
 
     public event EventHandler? InterruptDetected;
@@ -40,6 +42,7 @@ public sealed class WpfSessionHost : ISessionHost
         this.connection.Exited += this.OnConnectionExited;
         this.connection.TitleChanged += this.OnConnectionTitleChanged;
         this.connection.InterruptDetected += this.OnConnectionInterruptDetected;
+        this.connection.ApiErrorDetected += this.OnConnectionApiErrorDetected;
 
         try
         {
@@ -63,6 +66,7 @@ public sealed class WpfSessionHost : ISessionHost
             this.connection.Exited -= this.OnConnectionExited;
             this.connection.TitleChanged -= this.OnConnectionTitleChanged;
             this.connection.InterruptDetected -= this.OnConnectionInterruptDetected;
+            this.connection.ApiErrorDetected -= this.OnConnectionApiErrorDetected;
         }
 
         this.Pane.Dispose();
@@ -95,6 +99,11 @@ public sealed class WpfSessionHost : ISessionHost
     private void OnConnectionInterruptDetected(object? sender, EventArgs e)
     {
         this.InterruptDetected?.Invoke(this, e);
+    }
+
+    private void OnConnectionApiErrorDetected(object? sender, EventArgs e)
+    {
+        this.ApiErrorDetected?.Invoke(this, e);
     }
 
     private void SetState(SessionState state)

@@ -30,6 +30,9 @@ public interface ISessionHost : IDisposable
     // Passthrough of the underlying IPtyConnection.InterruptDetected - see its remarks.
     event EventHandler InterruptDetected;
 
+    // Passthrough of the underlying IPtyConnection.ApiErrorDetected - see its remarks.
+    event EventHandler ApiErrorDetected;
+
     void Start(TerminalLaunchOptions options);
 
     void Stop();

@@ -465,8 +465,10 @@ public partial class MainWindow : Window
                 var isOnScreen = this.IsActive && host.Pane.View.Visibility == Visibility.Visible;
                 if (!isOnScreen)
                 {
-                    if (session.Activity == SessionActivity.NeedsInput)
+                    if (session.Activity is SessionActivity.NeedsInput or SessionActivity.Error)
                     {
+                        // Error reuses the NeedsInput cue rather than getting its own sound asset -
+                        // both mean "go look at this session", just for different reasons.
                         SessionActivitySounds.PlayNeedsInput();
                     }
                     else if (session.Activity == SessionActivity.Done)

@@ -74,6 +74,8 @@ public sealed class SessionNodeViewModelTests
         public event EventHandler<string>? TitleChanged;
 
         public event EventHandler? InterruptDetected;
+
+        public event EventHandler? ApiErrorDetected;
 #pragma warning restore CS0067
 
         public void Start(TerminalLaunchOptions options)

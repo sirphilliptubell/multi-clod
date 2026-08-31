@@ -144,6 +144,16 @@
                          SessionNodeViewModel.ClearLatchedActivity. -->
                     <Ellipse x:Name="InterruptedGlyph" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Visibility="Collapsed"
                              Stroke="Gray" StrokeThickness="1.5" StrokeDashArray="3 1" />
+                    <!-- The CLI printed its own "API Error: ..." line (e.g. a dropped connection
+                         mid-response) - see TerminalSession.HandleApiErrorDetected. Red rather than
+                         NeedsInputGlyph's orange, since this means something actually broke rather
+                         than Claude waiting on an answer. Also latches until the user re-selects
+                         this session - see SessionNodeViewModel.ClearLatchedActivity. -->
+                    <Grid x:Name="ErrorGlyph" Canvas.Left="-1" Canvas.Top="-1" Width="12" Height="12" Visibility="Collapsed">
+                        <Ellipse Width="12" Height="12" Fill="Crimson" />
+                        <TextBlock Text="!" FontSize="10" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
                 </Canvas>
                 <TextBlock x:Name="SessionNameText" Grid.Column="1" Text="{Binding Name}"
                            Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center"
@@ -198,6 +208,10 @@
                 <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Interrupted}">
                     <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="InterruptedGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Error}">
+                    <Setter TargetName="StatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="ErrorGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
@@ -474,6 +488,12 @@
                     <!-- Static, not animated - matches InterruptedGlyph in the tree's own template. -->
                     <Ellipse x:Name="TabInterruptedGlyph" Width="10" Height="10" Visibility="Collapsed"
                              Stroke="Gray" StrokeThickness="1.5" StrokeDashArray="3 1" />
+                    <!-- Matches ErrorGlyph in the tree's own template. -->
+                    <Grid x:Name="TabErrorGlyph" Visibility="Collapsed">
+                        <Ellipse Width="10" Height="10" Fill="Crimson" />
+                        <TextBlock Text="!" FontSize="8" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0" />
+                    </Grid>
                 </Grid>
                 <TextBlock Text="{Binding DisplayTitle}" Foreground="White" VerticalAlignment="Center"
                            MaxWidth="160" TextTrimming="CharacterEllipsis" />
@@ -497,6 +517,10 @@
                 <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Interrupted}">
                     <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="TabInterruptedGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Activity}" Value="{x:Static local:SessionActivity.Error}">
+                    <Setter TargetName="TabStatusDot" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="TabErrorGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

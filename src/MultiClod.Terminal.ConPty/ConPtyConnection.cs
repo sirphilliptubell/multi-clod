@@ -48,6 +48,16 @@ public sealed class ConPtyConnection : IPtyConnection
     // pendingTitleSequence above, just without needing an explicit terminator to wait for.
     private string pendingInterruptTail = string.Empty;
 
+    // Literal prefix the CLI's own Ink-based UI prints for any API-level failure (a dropped
+    // connection mid-response, a rate limit, an auth error, ...) - confirmed against the CLI's own
+    // bundled strings. Matched as a prefix rather than any one specific message, same rationale as
+    // InterruptMarker: the exact wording/styling after it varies by failure and terminal color
+    // support, but this part doesn't. See ScanForApiErrorMarker.
+    private const string ApiErrorMarker = "API Error:";
+
+    // Same rationale as pendingInterruptTail, for ApiErrorMarker.
+    private string pendingApiErrorTail = string.Empty;
+
     // Rolling tail of raw output, handed to Exited via ProcessExitedEventArgs.OutputTail - lets a
     // caller see whatever the child printed right before dying (e.g. "'claude' is not recognized
     // as an internal or external command") without needing to catch it live in the terminal pane
@@ -70,6 +80,8 @@ public sealed class ConPtyConnection : IPtyConnection
     public event EventHandler<string>? TitleChanged;
 
     public event EventHandler? InterruptDetected;
+
+    public event EventHandler? ApiErrorDetected;
 
     public void Start()
     {
@@ -218,6 +230,7 @@ public sealed class ConPtyConnection : IPtyConnection
                 this.OutputReceived?.Invoke(this, text);
                 this.ScanForTitleSequences(text);
                 this.ScanForInterruptMarker(text);
+                this.ScanForApiErrorMarker(text);
                 this.AppendToOutputTail(text);
             }
         }
@@ -310,6 +323,22 @@ public sealed class ConPtyConnection : IPtyConnection
 
         var tailLength = InterruptMarker.Length - 1;
         this.pendingInterruptTail = combined.Length <= tailLength ? combined : combined[^tailLength..];
+    }
+
+    // Compensates for the same gap as ScanForInterruptMarker, just for a dropped/errored API call
+    // instead of a user-initiated cancel: the CLI's Stop hook never fires for a turn that died this
+    // way either, so without this the session would spin on Working forever. Re-firing for every
+    // subsequent chunk that still shows the marker is harmless - see ScanForInterruptMarker.
+    private void ScanForApiErrorMarker(string text)
+    {
+        var combined = this.pendingApiErrorTail + text;
+        if (combined.Contains(ApiErrorMarker, StringComparison.Ordinal))
+        {
+            this.ApiErrorDetected?.Invoke(this, EventArgs.Empty);
+        }
+
+        var tailLength = ApiErrorMarker.Length - 1;
+        this.pendingApiErrorTail = combined.Length <= tailLength ? combined : combined[^tailLength..];
     }
 
     private void AppendToOutputTail(string text)

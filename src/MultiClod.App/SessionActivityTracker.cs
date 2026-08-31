@@ -81,13 +81,23 @@ internal sealed class SessionActivityTracker
     // immediately where nobody would ever see it.
     private bool outcomeSeen = true;
 
+    // Set when the CLI's own raw output contained an "API Error: ..." line - see
+    // TerminalSession.HandleApiErrorDetected. Unlike lastOutcome/outcomeSeen this isn't a settled
+    // outcome reached once a turn ends normally; it can fire mid-turn (a dropped connection never
+    // gets a matching Stop), so it's tracked as its own always-wins latch rather than folded into
+    // that switch. Cleared the same way as the other latches - see MarkSeen - or by starting a new
+    // turn, whichever the user does first.
+    private bool hasApiError;
+
     /// <summary>
-    /// The one glyph to show, derived fresh from every fact above. Ordering is the priority: things
-    /// that are blocked on the *user* outrank things that are merely still running, and anything
-    /// still running outranks the settled outcome of a turn that already ended.
+    /// The one glyph to show, derived fresh from every fact above. Ordering is the priority: an API
+    /// error outranks everything else since it means something actually broke, things that are
+    /// blocked on the *user* outrank things that are merely still running, and anything still
+    /// running outranks the settled outcome of a turn that already ended.
     /// </summary>
     public SessionActivity Activity =>
-        this.unansweredQuestionPromptId is not null || this.promptBlockingCurrentTurn ? SessionActivity.NeedsInput
+        this.hasApiError ? SessionActivity.Error
+        : this.unansweredQuestionPromptId is not null || this.promptBlockingCurrentTurn ? SessionActivity.NeedsInput
         : this.turnInFlight || this.outstandingBackgroundTasks > 0 ? SessionActivity.Working
         : this.outcomeSeen ? SessionActivity.Idle
         : this.lastOutcome switch
@@ -118,6 +128,9 @@ internal sealed class SessionActivityTracker
                 this.lastOutcome = TurnOutcome.Interrupted;
                 this.outcomeSeen = false;
                 break;
+            case SessionActivity.Error:
+                this.hasApiError = true;
+                break;
         }
     }
 
@@ -130,6 +143,7 @@ internal sealed class SessionActivityTracker
         this.promptBlockingCurrentTurn = false;
         this.lastOutcome = TurnOutcome.None;
         this.outcomeSeen = true;
+        this.hasApiError = false;
     }
 
     /// <summary>Notification/agent_needs_input - Claude asked the user something and is waiting.</summary>
@@ -202,6 +216,21 @@ internal sealed class SessionActivityTracker
         this.outcomeSeen = false;
     }
 
+    /// <summary>
+    /// The CLI's own raw output contained an "API Error: ..." line - see
+    /// ConPtyConnection.ScanForApiErrorMarker. Reached via a text scan rather than a hook, since a
+    /// turn that dies this way never gets a matching Stop; abandons whatever the turn had
+    /// outstanding, same as <see cref="OnInterrupted"/>, since nothing further is coming for it.
+    /// </summary>
+    public void OnApiErrorDetected()
+    {
+        this.turnInFlight = false;
+        this.currentTurnPromptId = null;
+        this.promptBlockingCurrentTurn = false;
+        this.outstandingBackgroundTasks = 0;
+        this.hasApiError = true;
+    }
+
     /// <summary>The process is no longer running - nothing it reported still means anything.</summary>
     public void Reset()
     {
@@ -212,6 +241,7 @@ internal sealed class SessionActivityTracker
         this.outstandingBackgroundTasks = 0;
         this.lastOutcome = TurnOutcome.None;
         this.outcomeSeen = true;
+        this.hasApiError = false;
     }
 
     /// <summary>
@@ -223,5 +253,6 @@ internal sealed class SessionActivityTracker
         this.outcomeSeen = true;
         this.unansweredQuestionPromptId = null;
         this.promptBlockingCurrentTurn = false;
+        this.hasApiError = false;
     }
 }
