@@ -8,4 +8,5 @@ internal enum SessionSubSection
 {
     Memories,
     ContextSkills,
+    OutputStyles,
 }

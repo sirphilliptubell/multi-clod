@@ -20,6 +20,7 @@ using MultiClod.App.Diagnostics;
 using MultiClod.App.Import;
 using MultiClod.App.MarkdownEditor;
 using MultiClod.App.Native;
+using MultiClod.App.OutputStyles;
 using MultiClod.App.Persistence;
 using MultiClod.App.SessionLog;
 using MultiClod.App.SessionScope;
@@ -114,10 +115,24 @@ public partial class MainWindow : Window
     // see EnsureSkillsLoaded. Skills are only rescanned on the next app launch, not live.
     private ObservableCollection<SkillNodeViewModel>? skillNodes;
 
+    // Mirrors skillNodes, for the Output Styles group - see EnsureOutputStylesLoaded.
+    private ObservableCollection<OutputStyleNodeViewModel>? outputStyleNodes;
+
     // Set while OnSkillsListSelectionChanged is itself reverting a rejected selection change
     // (user declined to discard a dirty edit), so that reversion doesn't recursively re-trigger
     // the same dirty-check - mirrors suppressSelectionSideEffects's role for the Tree above.
     private bool suppressSkillsSelectionSideEffects;
+
+    // Mirrors suppressSkillsSelectionSideEffects, for OutputStylesList specifically.
+    private bool suppressOutputStylesSelectionSideEffects;
+
+    // Whether the Skills/Output Styles accordion groups in ContextPanel are currently expanded -
+    // both start expanded (Skills preserves the panel's previous always-visible behavior; Output
+    // Styles is surfaced too so it's noticed). Not persisted across restarts. See
+    // ToggleContextGroup/OnSkillsGroupHeaderClick/OnOutputStylesGroupHeaderClick.
+    private bool skillsGroupExpanded = true;
+
+    private bool outputStylesGroupExpanded = true;
 
     // Built on first switch to the Context rail section; null means "not built yet this run" - see
     // EnsureContextTreeLoaded. Only rebuilt after a save through MarkdownEditor (see
@@ -140,9 +155,11 @@ public partial class MainWindow : Window
         None,
         TopLevelContext,
         TopLevelSkill,
+        TopLevelOutputStyle,
         SessionMemory,
         SessionContext,
         SessionSkill,
+        SessionOutputStyle,
     }
 
     private MarkdownEditorSource activeMarkdownEditorSource;
@@ -191,14 +208,22 @@ public partial class MainWindow : Window
     // pair - see RebuildSessionContextSkills).
     private string? sessionContextSkillsScopedWorkingDirectory;
 
+    // Same as above, for sessionOutputStyleNodes - see RebuildSessionOutputStyles.
+    private string? sessionOutputStylesScopedWorkingDirectory;
+
     private ObservableCollection<MemoryFileNodeViewModel>? sessionMemoryNodes;
 
     private ContextFileNodeViewModel? sessionContextRoot;
 
     private ObservableCollection<SkillNodeViewModel>? sessionSkillNodes;
 
+    private ObservableCollection<OutputStyleNodeViewModel>? sessionOutputStyleNodes;
+
     // Mirrors suppressSkillsSelectionSideEffects, for MemoriesList specifically.
     private bool suppressMemoriesSelectionSideEffects;
+
+    // Mirrors suppressSkillsSelectionSideEffects, for SessionOutputStylesList specifically.
+    private bool suppressSessionOutputStylesSelectionSideEffects;
 
     // Mirrors suppressContextPanelSelectionSync, scoped to SessionContextTree/SessionSkillsList's
     // own mutual exclusivity - Memories isn't part of this pair, since it's a separate sub-section
@@ -892,6 +917,7 @@ public partial class MainWindow : Window
             // naturally re-shows it when switching back.
             this.HideActiveSessionPane();
             this.EnsureSkillsLoaded();
+            this.EnsureOutputStylesLoaded();
             this.EnsureContextTreeLoaded();
             this.RefreshContextPanelCanvas();
         }
@@ -1022,6 +1048,27 @@ public partial class MainWindow : Window
         var skills = new SkillDiscoveryService().ScanPersonalSkills();
         this.skillNodes = new ObservableCollection<SkillNodeViewModel>(skills.Select(s => new SkillNodeViewModel(s)));
         this.SkillsList.ItemsSource = this.skillNodes;
+        this.SkillsList.Visibility = this.skillNodes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        this.SkillsEmptyText.Visibility = this.skillNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Dimmed but still clickable - same "greyed but expandable to an empty-state message" rule
+        // the session sub-panel's icons already follow (see ApplySessionSubPanelIconAvailability).
+        this.SkillsGroupHeader.Opacity = this.skillNodes.Count == 0 ? DimmedIconOpacity : 1.0;
+    }
+
+    private void EnsureOutputStylesLoaded()
+    {
+        if (this.outputStyleNodes is not null)
+        {
+            return;
+        }
+
+        var outputStyles = new OutputStyleDiscoveryService().ScanPersonalOutputStyles();
+        this.outputStyleNodes = new ObservableCollection<OutputStyleNodeViewModel>(outputStyles.Select(s => new OutputStyleNodeViewModel(s)));
+        this.OutputStylesList.ItemsSource = this.outputStyleNodes;
+        this.OutputStylesList.Visibility = this.outputStyleNodes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        this.OutputStylesEmptyText.Visibility = this.outputStyleNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        this.OutputStylesGroupHeader.Opacity = this.outputStyleNodes.Count == 0 ? DimmedIconOpacity : 1.0;
     }
 
     private void EnsureContextTreeLoaded()
@@ -1110,14 +1157,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Clear ContextTree's selection so only one of the two stacked controls is ever visually
-        // "active" - guarded so this side effect doesn't recursively re-enter
-        // OnContextTreeSelectedItemChanged (see that handler's own top-of-method guard).
-        if (this.SkillsList.SelectedItem is not null && this.ContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
+        // Clear ContextTree's/OutputStylesList's selection so only one of the three stacked
+        // controls is ever visually "active" - guarded so this side effect doesn't recursively
+        // re-enter their own selection-changed handlers (see each handler's own top-of-method
+        // guard).
+        if (this.SkillsList.SelectedItem is not null)
         {
-            this.suppressContextPanelSelectionSync = true;
-            contextNode.IsSelected = false;
-            this.suppressContextPanelSelectionSync = false;
+            this.ClearOtherContextSelections(this.SkillsList);
+        }
+
+        this.RefreshContextPanelCanvas();
+    }
+
+    private void OnOutputStylesListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressOutputStylesSelectionSideEffects || this.suppressContextPanelSelectionSync)
+        {
+            return;
+        }
+
+        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressOutputStylesSelectionSideEffects = true;
+            this.OutputStylesList.SelectedItem = e.RemovedItems[0];
+            this.suppressOutputStylesSelectionSideEffects = false;
+            return;
+        }
+
+        if (this.OutputStylesList.SelectedItem is not null)
+        {
+            this.ClearOtherContextSelections(this.OutputStylesList);
         }
 
         this.RefreshContextPanelCanvas();
@@ -1138,17 +1207,44 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Clear SkillsList's selection so only one of the two stacked controls is ever visually
-        // "active" - guarded so this side effect doesn't recursively re-enter
-        // OnSkillsListSelectionChanged (see that handler's own top-of-method guard).
-        if (e.NewValue is ContextFileNodeViewModel && this.SkillsList.SelectedItem is not null)
+        // Clear SkillsList's/OutputStylesList's selection so only one of the three stacked
+        // controls is ever visually "active" - guarded so this side effect doesn't recursively
+        // re-enter their own selection-changed handlers (see each handler's own top-of-method
+        // guard).
+        if (e.NewValue is ContextFileNodeViewModel)
+        {
+            this.ClearOtherContextSelections(this.ContextTree);
+        }
+
+        this.RefreshContextPanelCanvas();
+    }
+
+    // Shared by OnSkillsListSelectionChanged/OnOutputStylesListSelectionChanged/
+    // OnContextTreeSelectedItemChanged now that three controls (rather than two) share one
+    // MarkdownEditor and must stay mutually exclusive - each guarded the same way the original
+    // pairwise clearing was, so clearing one doesn't recursively re-trigger its own handler.
+    private void ClearOtherContextSelections(object except)
+    {
+        if (!ReferenceEquals(except, this.ContextTree) && this.ContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
+        {
+            this.suppressContextPanelSelectionSync = true;
+            contextNode.IsSelected = false;
+            this.suppressContextPanelSelectionSync = false;
+        }
+
+        if (!ReferenceEquals(except, this.SkillsList) && this.SkillsList.SelectedItem is not null)
         {
             this.suppressContextPanelSelectionSync = true;
             this.SkillsList.SelectedItem = null;
             this.suppressContextPanelSelectionSync = false;
         }
 
-        this.RefreshContextPanelCanvas();
+        if (!ReferenceEquals(except, this.OutputStylesList) && this.OutputStylesList.SelectedItem is not null)
+        {
+            this.suppressContextPanelSelectionSync = true;
+            this.OutputStylesList.SelectedItem = null;
+            this.suppressContextPanelSelectionSync = false;
+        }
     }
 
     private void RefreshContextPanelCanvas()
@@ -1169,6 +1265,14 @@ public partial class MainWindow : Window
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelSkill;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(node.Info.FilePath, node.Info.Name));
         }
+        else if (this.OutputStylesList.SelectedItem is OutputStyleNodeViewModel outputStyleNode)
+        {
+            this.PlaceholderText.Visibility = Visibility.Collapsed;
+            this.ErrorText.Visibility = Visibility.Collapsed;
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelOutputStyle;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(outputStyleNode.Info.FilePath, outputStyleNode.Info.Name));
+        }
         else
         {
             this.MarkdownEditor.Visibility = Visibility.Collapsed;
@@ -1178,8 +1282,35 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnSkillsGroupHeaderClick(object sender, MouseButtonEventArgs e) =>
+        this.ToggleContextGroup(ref this.skillsGroupExpanded, this.SkillsGroupContent, this.SkillsGroupChevronRotate, this.SkillsList);
+
+    private void OnOutputStylesGroupHeaderClick(object sender, MouseButtonEventArgs e) =>
+        this.ToggleContextGroup(ref this.outputStylesGroupExpanded, this.OutputStylesGroupContent, this.OutputStylesGroupChevronRotate, this.OutputStylesList);
+
+    // Collapsing a group whose own item is the one currently loaded into MarkdownEditor must not
+    // silently discard an unsaved edit: clearing the list's selection re-enters that list's own
+    // guarded SelectionChanged handler (OnSkillsListSelectionChanged/OnOutputStylesListSelectionChanged),
+    // which reverts the selection right back if MarkdownEditor.TryNavigateAway() is declined - if
+    // that happened (SelectedItem is still set afterward), the collapse is aborted here too.
+    private void ToggleContextGroup(ref bool expanded, UIElement content, RotateTransform chevron, ListBox list)
+    {
+        if (expanded && list.SelectedItem is not null)
+        {
+            list.SelectedItem = null;
+            if (list.SelectedItem is not null)
+            {
+                return;
+            }
+        }
+
+        expanded = !expanded;
+        content.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        chevron.Angle = expanded ? 90 : 0;
+    }
+
     private bool IsShowingSessionScopedDocument =>
-        this.activeMarkdownEditorSource is MarkdownEditorSource.SessionMemory or MarkdownEditorSource.SessionContext or MarkdownEditorSource.SessionSkill;
+        this.activeMarkdownEditorSource is MarkdownEditorSource.SessionMemory or MarkdownEditorSource.SessionContext or MarkdownEditorSource.SessionSkill or MarkdownEditorSource.SessionOutputStyle;
 
     // Recomputes memories/context-skills availability for the newly foreground session, dims the
     // two icons (both orientations) accordingly, and auto-collapses/expands the sub-panel based on
@@ -1196,7 +1327,7 @@ public partial class MainWindow : Window
 
         var availability = SessionPanelAvailability.Compute(session.WorkingDirectory);
         this.ApplySessionSubPanelIconAvailability(availability);
-        this.SetSessionSubPanelCollapsed(!availability.HasMemories && !availability.HasContextSkills);
+        this.SetSessionSubPanelCollapsed(!availability.HasMemories && !availability.HasContextSkills && !availability.HasOutputStyles);
 
         if (this.currentSessionSubSection is { } section)
         {
@@ -1208,11 +1339,14 @@ public partial class MainWindow : Window
     {
         var memoriesOpacity = availability.HasMemories ? 1.0 : DimmedIconOpacity;
         var contextSkillsOpacity = availability.HasContextSkills ? 1.0 : DimmedIconOpacity;
+        var outputStylesOpacity = availability.HasOutputStyles ? 1.0 : DimmedIconOpacity;
 
         this.SessionMemoriesIcon.Opacity = memoriesOpacity;
         this.SessionMemoriesIconCollapsed.Opacity = memoriesOpacity;
         this.SessionContextSkillsIcon.Opacity = contextSkillsOpacity;
         this.SessionContextSkillsIconCollapsed.Opacity = contextSkillsOpacity;
+        this.SessionOutputStylesIcon.Opacity = outputStylesOpacity;
+        this.SessionOutputStylesIconCollapsed.Opacity = outputStylesOpacity;
     }
 
     private void SetSessionSubPanelCollapsed(bool collapsed)
@@ -1266,8 +1400,10 @@ public partial class MainWindow : Window
         this.currentSessionSubSection = section;
         this.SessionMemoriesAccentBar.Visibility = section == SessionSubSection.Memories ? Visibility.Visible : Visibility.Collapsed;
         this.SessionContextSkillsAccentBar.Visibility = section == SessionSubSection.ContextSkills ? Visibility.Visible : Visibility.Collapsed;
+        this.SessionOutputStylesAccentBar.Visibility = section == SessionSubSection.OutputStyles ? Visibility.Visible : Visibility.Collapsed;
         this.MemoriesSectionView.Visibility = section == SessionSubSection.Memories ? Visibility.Visible : Visibility.Collapsed;
         this.ContextSkillsSectionView.Visibility = section == SessionSubSection.ContextSkills ? Visibility.Visible : Visibility.Collapsed;
+        this.OutputStylesSectionView.Visibility = section == SessionSubSection.OutputStyles ? Visibility.Visible : Visibility.Collapsed;
 
         if (section is null)
         {
@@ -1291,24 +1427,35 @@ public partial class MainWindow : Window
 
     private void EnsureSessionSubSectionLoaded(SessionSubSection section, string workingDirectory)
     {
-        var alreadyBuiltForThisSession = section == SessionSubSection.Memories
-            ? this.sessionMemoryNodes is not null && string.Equals(this.sessionMemoriesScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase)
-            : this.sessionContextRoot is not null && string.Equals(this.sessionContextSkillsScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase);
+        var alreadyBuiltForThisSession = section switch
+        {
+            SessionSubSection.Memories =>
+                this.sessionMemoryNodes is not null && string.Equals(this.sessionMemoriesScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase),
+            SessionSubSection.ContextSkills =>
+                this.sessionContextRoot is not null && string.Equals(this.sessionContextSkillsScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase),
+            _ =>
+                this.sessionOutputStyleNodes is not null && string.Equals(this.sessionOutputStylesScopedWorkingDirectory, workingDirectory, StringComparison.OrdinalIgnoreCase),
+        };
 
         if (alreadyBuiltForThisSession)
         {
             return;
         }
 
-        if (section == SessionSubSection.Memories)
+        switch (section)
         {
-            this.sessionMemoriesScopedWorkingDirectory = workingDirectory;
-            this.RebuildSessionMemories(workingDirectory);
-        }
-        else
-        {
-            this.sessionContextSkillsScopedWorkingDirectory = workingDirectory;
-            this.RebuildSessionContextSkills(workingDirectory);
+            case SessionSubSection.Memories:
+                this.sessionMemoriesScopedWorkingDirectory = workingDirectory;
+                this.RebuildSessionMemories(workingDirectory);
+                break;
+            case SessionSubSection.ContextSkills:
+                this.sessionContextSkillsScopedWorkingDirectory = workingDirectory;
+                this.RebuildSessionContextSkills(workingDirectory);
+                break;
+            default:
+                this.sessionOutputStylesScopedWorkingDirectory = workingDirectory;
+                this.RebuildSessionOutputStyles(workingDirectory);
+                break;
         }
 
         // A cwd change while this section was already open would otherwise leave the *previous*
@@ -1358,6 +1505,25 @@ public partial class MainWindow : Window
         this.SessionContextSkillsEmptyText.Visibility = Visibility.Collapsed;
     }
 
+    private void RebuildSessionOutputStyles(string workingDirectory)
+    {
+        if (!SessionScopedPaths.TryGetRepoRoot(workingDirectory, out var repoRoot))
+        {
+            // Mirrors RebuildSessionContextSkills's own not-a-repo handling - the list stays
+            // hidden entirely rather than resolved against workingDirectory itself.
+            this.sessionOutputStyleNodes = null;
+            this.SessionOutputStylesList.Visibility = Visibility.Collapsed;
+            this.SessionOutputStylesEmptyText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var outputStyles = new OutputStyleDiscoveryService(Path.Combine(repoRoot, ".claude", "output-styles")).ScanPersonalOutputStyles();
+        this.sessionOutputStyleNodes = new ObservableCollection<OutputStyleNodeViewModel>(outputStyles.Select(s => new OutputStyleNodeViewModel(s)));
+        this.SessionOutputStylesList.ItemsSource = this.sessionOutputStyleNodes;
+        this.SessionOutputStylesList.Visibility = this.sessionOutputStyleNodes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        this.SessionOutputStylesEmptyText.Visibility = this.sessionOutputStyleNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     // Rebuilds just the session-scoped CLAUDE.md tree after saving an edit through MarkdownEditor -
     // mirrors RebuildContextTree. Skills are deliberately left alone, matching their own
     // rescan-on-next-launch-only convention (see EnsureSkillsLoaded).
@@ -1394,6 +1560,10 @@ public partial class MainWindow : Window
             node.IsSelected = false;
             this.suppressSessionContextPanelSelectionSync = false;
         }
+
+        this.suppressSessionOutputStylesSelectionSideEffects = true;
+        this.SessionOutputStylesList.SelectedItem = null;
+        this.suppressSessionOutputStylesSelectionSideEffects = false;
     }
 
     private void OnSessionMemoriesIconClick(object sender, MouseButtonEventArgs e)
@@ -1404,6 +1574,11 @@ public partial class MainWindow : Window
     private void OnSessionContextSkillsIconClick(object sender, MouseButtonEventArgs e)
     {
         this.SetSessionSubSection(SessionSubSection.ContextSkills);
+    }
+
+    private void OnSessionOutputStylesIconClick(object sender, MouseButtonEventArgs e)
+    {
+        this.SetSessionSubSection(SessionSubSection.OutputStyles);
     }
 
     private void OnCollapseSessionSubPanelClick(object sender, RoutedEventArgs e)
@@ -1485,6 +1660,24 @@ public partial class MainWindow : Window
         this.RefreshSessionSubPanelCanvas();
     }
 
+    private void OnSessionOutputStylesListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (this.suppressSessionOutputStylesSelectionSideEffects)
+        {
+            return;
+        }
+
+        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        {
+            this.suppressSessionOutputStylesSelectionSideEffects = true;
+            this.SessionOutputStylesList.SelectedItem = e.RemovedItems[0];
+            this.suppressSessionOutputStylesSelectionSideEffects = false;
+            return;
+        }
+
+        this.RefreshSessionSubPanelCanvas();
+    }
+
     private void RefreshSessionSubPanelCanvas()
     {
         if (this.MemoriesList.SelectedItem is MemoryFileNodeViewModel memoryNode)
@@ -1507,6 +1700,13 @@ public partial class MainWindow : Window
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionSkill;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(skillNode.Info.FilePath, skillNode.Info.Name));
+        }
+        else if (this.SessionOutputStylesList.SelectedItem is OutputStyleNodeViewModel outputStyleNode)
+        {
+            this.HideActiveSessionPane();
+            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.activeMarkdownEditorSource = MarkdownEditorSource.SessionOutputStyle;
+            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(outputStyleNode.Info.FilePath, outputStyleNode.Info.Name));
         }
         else
         {
@@ -1538,6 +1738,28 @@ public partial class MainWindow : Window
         if (this.SkillsList.SelectedItem is SkillNodeViewModel skill)
         {
             this.SkillsContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenAndSelect(skill.Info.FilePath)));
+        }
+    }
+
+    private void OnOutputStylesListMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+
+        if (item is not null && !item.IsSelected)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    private void OnOutputStylesListContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.OutputStylesContextMenu.Items.Clear();
+
+        // Mirrors OnSkillsListContextMenuOpening's own remark - selection is forced above in
+        // OnOutputStylesListMouseRightButtonDown before this fires.
+        if (this.OutputStylesList.SelectedItem is OutputStyleNodeViewModel outputStyle)
+        {
+            this.OutputStylesContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenAndSelect(outputStyle.Info.FilePath)));
         }
     }
 

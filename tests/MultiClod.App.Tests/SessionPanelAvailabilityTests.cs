@@ -129,6 +129,61 @@ public sealed class SessionPanelAvailabilityTests
         }
     }
 
+    [Test]
+    public async Task HasAnyOutputStyle_DirectoryDoesNotExist_ReturnsFalse()
+    {
+        var scratchDir = CreateScratchDirectory();
+        try
+        {
+            var result = SessionPanelAvailability.HasAnyOutputStyle(scratchDir);
+
+            await Assert.That(result).IsFalse();
+        }
+        finally
+        {
+            DeleteScratchDirectory(scratchDir);
+        }
+    }
+
+    [Test]
+    public async Task HasAnyOutputStyle_HasMdFile_ReturnsTrue()
+    {
+        var scratchDir = CreateScratchDirectory();
+        try
+        {
+            var outputStylesDir = Path.Combine(scratchDir, ".claude", "output-styles");
+            Directory.CreateDirectory(outputStylesDir);
+            File.WriteAllText(Path.Combine(outputStylesDir, "my-style.md"), "---\nname: My Style\n---\n");
+
+            var result = SessionPanelAvailability.HasAnyOutputStyle(scratchDir);
+
+            await Assert.That(result).IsTrue();
+        }
+        finally
+        {
+            DeleteScratchDirectory(scratchDir);
+        }
+    }
+
+    [Test]
+    public async Task HasAnyOutputStyle_DirectoryExistsButEmpty_ReturnsFalse()
+    {
+        var scratchDir = CreateScratchDirectory();
+        try
+        {
+            var outputStylesDir = Path.Combine(scratchDir, ".claude", "output-styles");
+            Directory.CreateDirectory(outputStylesDir);
+
+            var result = SessionPanelAvailability.HasAnyOutputStyle(scratchDir);
+
+            await Assert.That(result).IsFalse();
+        }
+        finally
+        {
+            DeleteScratchDirectory(scratchDir);
+        }
+    }
+
     private static string CreateScratchDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "MultiClod.App.Tests", Guid.NewGuid().ToString());

@@ -690,63 +690,151 @@
             </TreeView>
 
             <!--
-                Context/Skills panel: CLAUDE.md + its @import tree (ContextTree) stacked above a
-                separator and the personal skills list (SkillsList) - see MainWindow.SetRailSection.
-                Mutually exclusive with Tree via Visibility, same convention as the canvas's own
-                children below. One shared Visibility flag controls both stacked children together,
-                since they're always shown/hidden as a unit.
+                Context/Skills panel: CLAUDE.md + its @import tree (ContextTree, unaffected by the
+                accordion below) stacked above two collapsible groups - Skills and Output Styles -
+                see MainWindow.SetRailSection/ToggleContextGroup. Mutually exclusive with Tree via
+                Visibility, same convention as the canvas's own children below. One shared
+                Visibility flag controls both stacked children together, since they're always
+                shown/hidden as a unit.
             -->
-            <Grid x:Name="ContextPanel" Grid.RowSpan="3" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" MaxHeight="220" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <ScrollViewer x:Name="ContextPanel" Grid.RowSpan="3" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <!-- CLAUDE.md (Context\ClaudeConfigDirectory) and its recursive @imports (Context\ContextTreeBuilder) - kept at a bounded MaxHeight with its own internal scroll (deep import trees), unlike the two groups below. -->
+                    <TreeView x:Name="ContextTree" MaxHeight="220" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ItemContainerStyle="{StaticResource ContextTreeItemStyle}"
+                              SelectedItemChanged="OnContextTreeSelectedItemChanged"
+                              MouseRightButtonDown="OnContextTreeMouseRightButtonDown"
+                              ContextMenuOpening="OnContextTreeContextMenuOpening">
+                        <TreeView.Resources>
+                            <!-- Same selection-highlight overrides as Tree above, duplicated since each TreeView's Resources is its own scope. -->
+                            <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
+                            <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
+                            <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                            <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                            <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
+                            <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
+                        </TreeView.Resources>
+                        <TreeView.ContextMenu>
+                            <ContextMenu x:Name="ContextTreeContextMenu" />
+                        </TreeView.ContextMenu>
+                    </TreeView>
 
-                <!-- CLAUDE.md (Context\ClaudeConfigDirectory) and its recursive @imports (Context\ContextTreeBuilder). -->
-                <TreeView x:Name="ContextTree" Grid.Row="0" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
-                          ItemContainerStyle="{StaticResource ContextTreeItemStyle}"
-                          SelectedItemChanged="OnContextTreeSelectedItemChanged"
-                          MouseRightButtonDown="OnContextTreeMouseRightButtonDown"
-                          ContextMenuOpening="OnContextTreeContextMenuOpening">
-                    <TreeView.Resources>
-                        <!-- Same selection-highlight overrides as Tree above, duplicated since each TreeView's Resources is its own scope. -->
-                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightBrushKey}" Color="{DynamicResource Theme.Color.Accent}" />
-                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.HighlightTextBrushKey}" Color="White" />
-                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
-                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.ControlTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
-                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedBackground}" />
-                        <SolidColorBrush x:Key="{x:Static sys:SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource Theme.Color.SelectionUnfocusedForeground}" />
-                    </TreeView.Resources>
-                    <TreeView.ContextMenu>
-                        <ContextMenu x:Name="ContextTreeContextMenu" />
-                    </TreeView.ContextMenu>
-                </TreeView>
+                    <!--
+                        Skills group header - click toggles SkillsGroupContent's Visibility in
+                        code-behind (ToggleContextGroup). Opacity dims to DimmedIconOpacity when
+                        EnsureSkillsLoaded finds nothing, matching the session sub-panel's icons -
+                        still clickable so the empty-state text below remains reachable.
+                    -->
+                    <Border x:Name="SkillsGroupHeader" Height="28" Background="Transparent" Cursor="Hand"
+                            BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,1,0,0"
+                            MouseLeftButtonDown="OnSkillsGroupHeaderClick">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                            <Polyline x:Name="SkillsGroupChevron" Points="0,0 5,4 0,8" Width="6" Height="8" VerticalAlignment="Center"
+                                      Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent">
+                                <Polyline.RenderTransform>
+                                    <RotateTransform x:Name="SkillsGroupChevronRotate" Angle="90" CenterX="3" CenterY="4" />
+                                </Polyline.RenderTransform>
+                            </Polyline>
+                            <TextBlock Text="Skills" Margin="8,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                        </StackPanel>
+                    </Border>
 
-                <Border Grid.Row="1" Height="1" Margin="4,4" Background="{DynamicResource Theme.Brush.Border}" />
+                    <!--
+                        Flat list of personal skills (~/.claude/skills/*/SKILL.md), populated in
+                        code-behind by MainWindow.EnsureSkillsLoaded. No internal scrolling of its
+                        own (ScrollViewer.VerticalScrollBarVisibility="Disabled") - it sizes to fit
+                        every item, and the outer ScrollViewer above scrolls the whole panel if
+                        that (plus everything else) doesn't fit the available height.
+                    -->
+                    <Grid x:Name="SkillsGroupContent">
+                        <ListBox x:Name="SkillsList" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="OnSkillsListSelectionChanged"
+                                 MouseRightButtonDown="OnSkillsListMouseRightButtonDown"
+                                 ContextMenuOpening="OnSkillsListContextMenuOpening">
+                            <ListBox.ContextMenu>
+                                <ContextMenu x:Name="SkillsContextMenu" />
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4">
+                                        <StackPanel.ToolTip>
+                                            <!-- Path on its own line, full description wrapped below it at a fixed
+                                                 width - some descriptions run long, so an unconstrained tooltip
+                                                 would otherwise stretch across the screen. -->
+                                            <StackPanel MaxWidth="320">
+                                                <TextBlock Text="{Binding Info.FilePath}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </StackPanel.ToolTip>
+                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                        <!-- Description is left plain (no visibility converter for the null/empty
+                                             case) - an empty TextBlock with no MinHeight collapses to zero height
+                                             visually, so there's no blank gap worth the extra converter class.
+                                             TextTrimming (rather than TextWrapping) keeps each row a single line -
+                                             a long description is cut off with an ellipsis instead of growing the
+                                             row or triggering horizontal scrolling. -->
+                                        <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
 
-                <!-- Flat list of personal skills (~/.claude/skills/*/SKILL.md), populated in code-behind by MainWindow.EnsureSkillsLoaded. -->
-                <ListBox x:Name="SkillsList" Grid.Row="2" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
-                         SelectionChanged="OnSkillsListSelectionChanged"
-                         MouseRightButtonDown="OnSkillsListMouseRightButtonDown"
-                         ContextMenuOpening="OnSkillsListContextMenuOpening">
-                    <ListBox.ContextMenu>
-                        <ContextMenu x:Name="SkillsContextMenu" />
-                    </ListBox.ContextMenu>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
-                                <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
-                                <!-- Description is left plain (no visibility converter for the null/empty
-                                     case) - an empty TextBlock with no MinHeight collapses to zero height
-                                     visually, so there's no blank gap worth the extra converter class. -->
-                                <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Grid>
+                        <TextBlock x:Name="SkillsEmptyText" Text="No skills found" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                    </Grid>
+
+                    <!-- Output Styles group header - mirrors SkillsGroupHeader exactly; see OnOutputStylesGroupHeaderClick. -->
+                    <Border x:Name="OutputStylesGroupHeader" Height="28" Background="Transparent" Cursor="Hand"
+                            BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,1,0,0"
+                            MouseLeftButtonDown="OnOutputStylesGroupHeaderClick">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                            <Polyline x:Name="OutputStylesGroupChevron" Points="0,0 5,4 0,8" Width="6" Height="8" VerticalAlignment="Center"
+                                      Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent">
+                                <Polyline.RenderTransform>
+                                    <RotateTransform x:Name="OutputStylesGroupChevronRotate" Angle="90" CenterX="3" CenterY="4" />
+                                </Polyline.RenderTransform>
+                            </Polyline>
+                            <TextBlock Text="Output Styles" Margin="8,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Flat list of personal output styles (~/.claude/output-styles/*.md), populated by MainWindow.EnsureOutputStylesLoaded - same no-internal-scroll/ellipsis-trim shape as SkillsGroupContent above. -->
+                    <Grid x:Name="OutputStylesGroupContent">
+                        <ListBox x:Name="OutputStylesList" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="OnOutputStylesListSelectionChanged"
+                                 MouseRightButtonDown="OnOutputStylesListMouseRightButtonDown"
+                                 ContextMenuOpening="OnOutputStylesListContextMenuOpening">
+                            <ListBox.ContextMenu>
+                                <ContextMenu x:Name="OutputStylesContextMenu" />
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4">
+                                        <StackPanel.ToolTip>
+                                            <!-- Path on its own line, full description wrapped below it at a fixed
+                                                 width - some descriptions run long, so an unconstrained tooltip
+                                                 would otherwise stretch across the screen. -->
+                                            <StackPanel MaxWidth="320">
+                                                <TextBlock Text="{Binding Info.FilePath}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </StackPanel.ToolTip>
+                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                        <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <TextBlock x:Name="OutputStylesEmptyText" Text="No output styles found" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
             <!--
                 Horizontal splitter between Tree and SessionSubPanelHost - visible only while
@@ -796,6 +884,20 @@
                                         <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="7" Fill="#1E1E1E" />
                                         <Rectangle Width="10" Height="1.5" Canvas.Left="7" Canvas.Top="11" Fill="#1E1E1E" />
                                         <Rectangle Width="6" Height="1.5" Canvas.Left="7" Canvas.Top="15" Fill="#1E1E1E" />
+                                    </Canvas>
+                                </Border>
+                            </Grid>
+
+                            <Grid x:Name="SessionOutputStylesIcon" Width="48" Height="48"
+                                  MouseLeftButtonDown="OnSessionOutputStylesIconClick" ToolTip="Output Styles (this repo)">
+                                <Border x:Name="SessionOutputStylesAccentBar" Width="3" HorizontalAlignment="Left" Background="{DynamicResource Theme.Brush.Accent}" Visibility="Collapsed" />
+                                <Border Width="32" Height="32" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                                    <!-- Palette glyph (blob + three paint-dab dots) - visually distinct from the document/thought-bubble glyphs used elsewhere on this rail. -->
+                                    <Canvas Width="24" Height="24">
+                                        <Ellipse Width="18" Height="14" Canvas.Left="3" Canvas.Top="5" Fill="{DynamicResource Theme.Brush.AccentSecondary}" />
+                                        <Ellipse Width="4" Height="4" Canvas.Left="6" Canvas.Top="9" Fill="{DynamicResource Theme.Brush.AccentCoral}" />
+                                        <Ellipse Width="4" Height="4" Canvas.Left="11" Canvas.Top="7" Fill="#1E1E1E" />
+                                        <Ellipse Width="4" Height="4" Canvas.Left="15" Canvas.Top="10" Fill="{DynamicResource Theme.Brush.Accent}" />
                                     </Canvas>
                                 </Border>
                             </Grid>
@@ -854,12 +956,22 @@
                                 <Border Grid.Row="1" Height="1" Margin="4,4" Background="{DynamicResource Theme.Brush.Border}" />
 
                                 <ListBox x:Name="SessionSkillsList" Grid.Row="2" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                          SelectionChanged="OnSessionSkillsListSelectionChanged">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel Margin="4" ToolTip="{Binding Info.FilePath}">
-                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
-                                                <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" />
+                                            <StackPanel Margin="4">
+                                        <StackPanel.ToolTip>
+                                            <!-- Path on its own line, full description wrapped below it at a fixed
+                                                 width - some descriptions run long, so an unconstrained tooltip
+                                                 would otherwise stretch across the screen. -->
+                                            <StackPanel MaxWidth="320">
+                                                <TextBlock Text="{Binding Info.FilePath}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </StackPanel.ToolTip>
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                                <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -867,6 +979,34 @@
                             </Grid>
 
                             <TextBlock x:Name="SessionContextSkillsEmptyText" Text="Not a git repo" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </Grid>
+
+                        <!-- Session-scoped Output Styles: flat list of this repo's .claude/output-styles/*.md - mirrors MemoriesSectionView's single-list shape (no tree). -->
+                        <Grid x:Name="OutputStylesSectionView" Visibility="Collapsed">
+                            <ListBox x:Name="SessionOutputStylesList" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     SelectionChanged="OnSessionOutputStylesListSelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="4">
+                                        <StackPanel.ToolTip>
+                                            <!-- Path on its own line, full description wrapped below it at a fixed
+                                                 width - some descriptions run long, so an unconstrained tooltip
+                                                 would otherwise stretch across the screen. -->
+                                            <StackPanel MaxWidth="320">
+                                                <TextBlock Text="{Binding Info.FilePath}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </StackPanel.ToolTip>
+                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                            <TextBlock Text="{Binding Description}" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock x:Name="SessionOutputStylesEmptyText" Text="No output styles for this repo" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
                         </Grid>
                     </Grid>
@@ -892,6 +1032,18 @@
                                 <Rectangle Width="7" Height="1" Canvas.Left="4.5" Canvas.Top="5" Fill="#1E1E1E" />
                                 <Rectangle Width="7" Height="1" Canvas.Left="4.5" Canvas.Top="7.5" Fill="#1E1E1E" />
                                 <Rectangle Width="4" Height="1" Canvas.Left="4.5" Canvas.Top="10" Fill="#1E1E1E" />
+                            </Canvas>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="SessionOutputStylesIconCollapsed" Width="32" Height="32" Margin="0,4,4,4"
+                          MouseLeftButtonDown="OnSessionOutputStylesIconClick" ToolTip="Output Styles (this repo)">
+                        <Border Width="24" Height="24" Background="{DynamicResource Theme.Brush.RailTileBackground}" CornerRadius="4">
+                            <Canvas Width="16" Height="16">
+                                <Ellipse Width="12" Height="9" Canvas.Left="2" Canvas.Top="3.5" Fill="{DynamicResource Theme.Brush.AccentSecondary}" />
+                                <Ellipse Width="2.5" Height="2.5" Canvas.Left="4" Canvas.Top="6" Fill="{DynamicResource Theme.Brush.AccentCoral}" />
+                                <Ellipse Width="2.5" Height="2.5" Canvas.Left="7.5" Canvas.Top="4.5" Fill="#1E1E1E" />
+                                <Ellipse Width="2.5" Height="2.5" Canvas.Left="10" Canvas.Top="6.5" Fill="{DynamicResource Theme.Brush.Accent}" />
                             </Canvas>
                         </Border>
                     </Grid>

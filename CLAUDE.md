@@ -3,14 +3,17 @@
 A WPF desktop app (`MultiClod.App`) with a rail/panel/canvas layout: a narrow icon rail on the far
 left (each icon has a tooltip) selects between features - Sessions (a panel managing a tree of
 projects/sessions, with a canvas hosting embedded Claude Code CLI sessions via a vendored Microsoft
-terminal control), Context / Skills (a panel stacking two controls: a `ContextTree` showing the
-resolved user-level `CLAUDE.md` (honoring `CLAUDE_CONFIG_DIR`) and its recursive `@import` tree -
-greying out not-yet-created or cycle-detected nodes - above a separator and the existing flat list
-of personal Claude Code skills from `~/.claude/skills`; selecting either shows the selected
-file/skill in a shared `MarkdownEditorView` canvas, which renders `SKILL.md`/`CLAUDE.md` and can
-switch to a raw-text editor), and Settings (no tree/list panel - just a canvas of persisted
-toggles/fields, e.g. default root folder, git worktree usage, Claude permission mode, and app
-theme). Releases are packaged
+terminal control - below the tree, a session-scoped sub-panel shows that session's own repo-local
+Memories/Context+Skills/Output Styles, each behind its own icon, greyed out when empty), Context /
+Skills (a panel with a `ContextTree` showing the resolved user-level `CLAUDE.md` (honoring
+`CLAUDE_CONFIG_DIR`) and its recursive `@import` tree - greying out not-yet-created or
+cycle-detected nodes - above two collapsible accordion groups: Skills (the existing flat list of
+personal Claude Code skills from `~/.claude/skills`) and Output Styles (personal output styles from
+`~/.claude/output-styles`), each group's header dimming when it has nothing to show; selecting a
+tree node, skill, or output style shows it in a shared `MarkdownEditorView` canvas, which renders
+`SKILL.md`/`CLAUDE.md`/output-style markdown and can switch to a raw-text editor), and Settings (no
+tree/list panel - just a canvas of persisted toggles/fields, e.g. default root folder, git worktree
+usage, Claude permission mode, and app theme). Releases are packaged
 with Velopack (`vpk`) and published as GitHub Releases on this repo (via
 `.github/workflows/release.yml`, triggered by pushing a `vX.Y.Z` tag); running instances auto-update
 from there.
