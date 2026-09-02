@@ -34,8 +34,8 @@ internal sealed class OutputStyleDiscoveryService
         var results = new List<OutputStyleInfo>();
         foreach (var file in Directory.EnumerateFiles(this.rootDirectory, "*" + OutputStyleFileExtension))
         {
-            var (name, description) = SkillFrontmatterParser.Parse(File.ReadAllText(file));
-            results.Add(new OutputStyleInfo(name ?? Path.GetFileNameWithoutExtension(file), description, file));
+            SkillFrontmatterYaml.TryParse(File.ReadAllText(file), out var frontmatter, out _, out _);
+            results.Add(new OutputStyleInfo(frontmatter?.Name ?? Path.GetFileNameWithoutExtension(file), frontmatter?.Description, file));
         }
 
         results.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));

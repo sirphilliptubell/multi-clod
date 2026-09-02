@@ -26,6 +26,7 @@ using MultiClod.App.SessionLog;
 using MultiClod.App.SessionScope;
 using MultiClod.App.Settings;
 using MultiClod.App.Skills;
+using MultiClod.App.Skills.SkillEditor;
 using MultiClod.App.Theming;
 using MultiClod.App.Undo;
 using MultiClod.App.Updates;
@@ -304,6 +305,7 @@ public partial class MainWindow : Window
         // Only trigger for a save that came from the Context tree (see
         // OnMarkdownEditorDocumentSaved) - saving a Skill doesn't need the Context tree rebuilt.
         this.MarkdownEditor.DocumentSaved += this.OnMarkdownEditorDocumentSaved;
+        this.SkillEditor.DocumentSaved += this.OnSkillEditorDocumentSaved;
 
         // Seeds the live-bindable flag every cost badge across the app reads from - see
         // CostDisplaySettings' remarks. Every later toggle flows through OnShowCostsChanged instead.
@@ -634,7 +636,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (this.IsShowingSessionScopedDocument && e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        if (this.IsShowingSessionScopedDocument && e.RemovedItems.Count > 0 && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressTabStripSelectionSideEffects = true;
             this.TabStrip.SelectedItem = e.RemovedItems[0];
@@ -888,7 +890,7 @@ public partial class MainWindow : Window
 
         // Leaving Context with an unsaved edit needs the same discard-confirmation as switching to
         // a different skill/Context node within the panel - see MarkdownEditorView.TryNavigateAway.
-        if (this.currentRailSection == RailSection.Context && !this.MarkdownEditor.TryNavigateAway())
+        if (this.currentRailSection == RailSection.Context && !this.TryNavigateAwayFromActiveEditor())
         {
             return;
         }
@@ -904,10 +906,10 @@ public partial class MainWindow : Window
         this.TabStripHost.Visibility = section == RailSection.Sessions ? Visibility.Visible : Visibility.Collapsed;
         this.UpdateSessionSubPanelSplitterVisibility();
 
-        // Both cleared unconditionally here - the branches below re-show whichever one actually
-        // applies (RefreshContextPanelCanvas may re-show MarkdownEditor; the Settings branch always
-        // shows SettingsView). Neither is otherwise toggled anywhere else.
-        this.MarkdownEditor.Visibility = Visibility.Collapsed;
+        // All three cleared unconditionally here - the branches below re-show whichever one
+        // actually applies (RefreshContextPanelCanvas may re-show MarkdownEditor or SkillEditor;
+        // the Settings branch always shows SettingsView). None is otherwise toggled anywhere else.
+        this.HideActiveDocumentEditors();
         this.SettingsView.Visibility = Visibility.Collapsed;
 
         if (section == RailSection.Context)
@@ -1028,6 +1030,7 @@ public partial class MainWindow : Window
         }
 
         this.MarkdownEditor.RefreshTheme();
+        this.SkillEditor.RefreshTheme();
     }
 
     private void HideActiveSessionPane()
@@ -1045,6 +1048,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        this.RebuildSkillsList();
+    }
+
+    // Split out from EnsureSkillsLoaded so a Skill saved/created through SkillEditor (see
+    // OnSkillEditorDocumentSaved) can force a rescan instead of only ever loading once per run,
+    // unlike EnsureSkillsLoaded's own once-per-launch convention for the read-only case.
+    private void RebuildSkillsList()
+    {
         var skills = new SkillDiscoveryService().ScanPersonalSkills();
         this.skillNodes = new ObservableCollection<SkillNodeViewModel>(skills.Select(s => new SkillNodeViewModel(s)));
         this.SkillsList.ItemsSource = this.skillNodes;
@@ -1090,6 +1101,29 @@ public partial class MainWindow : Window
                 break;
             case MarkdownEditorSource.SessionContext:
                 this.RebuildSessionContextTreeOnly();
+                break;
+        }
+    }
+
+    // Refreshes whichever list (personal or project-level) the saved/newly-created skill belongs
+    // to - there's no FileSystemWatcher, matching every other list in this app's own
+    // rescan-on-next-launch-only convention, so a save is the only other refresh trigger. Also
+    // re-checks the affected session's SessionPanelAvailability so its rail icon un-greys
+    // immediately if this was that session's first skill.
+    private void OnSkillEditorDocumentSaved(object? sender, string filePath)
+    {
+        switch (this.activeMarkdownEditorSource)
+        {
+            case MarkdownEditorSource.TopLevelSkill:
+                this.RebuildSkillsList();
+                break;
+            case MarkdownEditorSource.SessionSkill:
+                if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
+                {
+                    this.RebuildSessionContextSkills(session.WorkingDirectory);
+                    this.RefreshSessionSubPanelForActiveTab();
+                }
+
                 break;
         }
     }
@@ -1149,7 +1183,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        if (e.RemovedItems.Count > 0 && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressSkillsSelectionSideEffects = true;
             this.SkillsList.SelectedItem = e.RemovedItems[0];
@@ -1176,7 +1210,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        if (e.RemovedItems.Count > 0 && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressOutputStylesSelectionSideEffects = true;
             this.OutputStylesList.SelectedItem = e.RemovedItems[0];
@@ -1199,7 +1233,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.OldValue is ContextFileNodeViewModel oldNode && !this.MarkdownEditor.TryNavigateAway())
+        if (e.OldValue is ContextFileNodeViewModel oldNode && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressContextPanelSelectionSync = true;
             oldNode.IsSelected = true;
@@ -1253,6 +1287,7 @@ public partial class MainWindow : Window
         {
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
+            this.SkillEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelContext;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
@@ -1261,21 +1296,23 @@ public partial class MainWindow : Window
         {
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
-            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.SkillEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelSkill;
-            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(node.Info.FilePath, node.Info.Name));
+            this.SkillEditor.LoadDocument(node.Info.FilePath);
         }
         else if (this.OutputStylesList.SelectedItem is OutputStyleNodeViewModel outputStyleNode)
         {
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
+            this.SkillEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelOutputStyle;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(outputStyleNode.Info.FilePath, outputStyleNode.Info.Name));
         }
         else
         {
-            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.HideActiveDocumentEditors();
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.PlaceholderText.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.None;
@@ -1291,7 +1328,7 @@ public partial class MainWindow : Window
     // Collapsing a group whose own item is the one currently loaded into MarkdownEditor must not
     // silently discard an unsaved edit: clearing the list's selection re-enters that list's own
     // guarded SelectionChanged handler (OnSkillsListSelectionChanged/OnOutputStylesListSelectionChanged),
-    // which reverts the selection right back if MarkdownEditor.TryNavigateAway() is declined - if
+    // which reverts the selection right back if TryNavigateAwayFromActiveEditor() is declined - if
     // that happened (SelectedItem is still set afterward), the collapse is aborted here too.
     private void ToggleContextGroup(ref bool expanded, UIElement content, RotateTransform chevron, ListBox list)
     {
@@ -1311,6 +1348,21 @@ public partial class MainWindow : Window
 
     private bool IsShowingSessionScopedDocument =>
         this.activeMarkdownEditorSource is MarkdownEditorSource.SessionMemory or MarkdownEditorSource.SessionContext or MarkdownEditorSource.SessionSkill or MarkdownEditorSource.SessionOutputStyle;
+
+    // Skills now show in the separate SkillEditor control rather than the shared MarkdownEditor -
+    // these three let every existing navigate-away/hide call site stay a single call regardless of
+    // which of the two controls activeMarkdownEditorSource says is actually showing.
+    private bool IsActiveEditorSkill =>
+        this.activeMarkdownEditorSource is MarkdownEditorSource.TopLevelSkill or MarkdownEditorSource.SessionSkill;
+
+    private bool TryNavigateAwayFromActiveEditor() =>
+        this.IsActiveEditorSkill ? this.SkillEditor.TryNavigateAway() : this.MarkdownEditor.TryNavigateAway();
+
+    private void HideActiveDocumentEditors()
+    {
+        this.MarkdownEditor.Visibility = Visibility.Collapsed;
+        this.SkillEditor.Visibility = Visibility.Collapsed;
+    }
 
     // Recomputes memories/context-skills availability for the newly foreground session, dims the
     // two icons (both orientations) accordingly, and auto-collapses/expands the sub-panel based on
@@ -1387,7 +1439,7 @@ public partial class MainWindow : Window
             section = null;
         }
 
-        if (this.IsShowingSessionScopedDocument && !this.MarkdownEditor.TryNavigateAway())
+        if (this.IsShowingSessionScopedDocument && !this.TryNavigateAwayFromActiveEditor())
         {
             return;
         }
@@ -1411,7 +1463,7 @@ public partial class MainWindow : Window
 
             if (this.IsShowingSessionScopedDocument)
             {
-                this.MarkdownEditor.Visibility = Visibility.Collapsed;
+                this.HideActiveDocumentEditors();
                 this.activeMarkdownEditorSource = MarkdownEditorSource.None;
                 this.RefreshSessionsCanvas();
             }
@@ -1465,7 +1517,7 @@ public partial class MainWindow : Window
         this.ClearSessionSubSectionSelections();
         if (this.IsShowingSessionScopedDocument)
         {
-            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.HideActiveDocumentEditors();
             this.activeMarkdownEditorSource = MarkdownEditorSource.None;
             this.RefreshSessionsCanvas();
         }
@@ -1593,7 +1645,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        if (e.RemovedItems.Count > 0 && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressMemoriesSelectionSideEffects = true;
             this.MemoriesList.SelectedItem = e.RemovedItems[0];
@@ -1611,7 +1663,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.OldValue is ContextFileNodeViewModel oldNode && !this.MarkdownEditor.TryNavigateAway())
+        if (e.OldValue is ContextFileNodeViewModel oldNode && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressSessionContextPanelSelectionSync = true;
             oldNode.IsSelected = true;
@@ -1639,7 +1691,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        if (e.RemovedItems.Count > 0 && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressSessionSkillsSelectionSideEffects = true;
             this.SessionSkillsList.SelectedItem = e.RemovedItems[0];
@@ -1667,7 +1719,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.RemovedItems.Count > 0 && !this.MarkdownEditor.TryNavigateAway())
+        if (e.RemovedItems.Count > 0 && !this.TryNavigateAwayFromActiveEditor())
         {
             this.suppressSessionOutputStylesSelectionSideEffects = true;
             this.SessionOutputStylesList.SelectedItem = e.RemovedItems[0];
@@ -1683,6 +1735,7 @@ public partial class MainWindow : Window
         if (this.MemoriesList.SelectedItem is MemoryFileNodeViewModel memoryNode)
         {
             this.HideActiveSessionPane();
+            this.SkillEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionMemory;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(memoryNode.FilePath, memoryNode.Name));
@@ -1690,6 +1743,7 @@ public partial class MainWindow : Window
         else if (this.SessionContextTree.SelectedItem is ContextFileNodeViewModel contextNode)
         {
             this.HideActiveSessionPane();
+            this.SkillEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionContext;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
@@ -1697,20 +1751,22 @@ public partial class MainWindow : Window
         else if (this.SessionSkillsList.SelectedItem is SkillNodeViewModel skillNode)
         {
             this.HideActiveSessionPane();
-            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.SkillEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionSkill;
-            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(skillNode.Info.FilePath, skillNode.Info.Name));
+            this.SkillEditor.LoadDocument(skillNode.Info.FilePath);
         }
         else if (this.SessionOutputStylesList.SelectedItem is OutputStyleNodeViewModel outputStyleNode)
         {
             this.HideActiveSessionPane();
+            this.SkillEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionOutputStyle;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(outputStyleNode.Info.FilePath, outputStyleNode.Info.Name));
         }
         else
         {
-            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.HideActiveDocumentEditors();
             this.activeMarkdownEditorSource = MarkdownEditorSource.None;
             this.RefreshSessionsCanvas();
         }
@@ -1739,6 +1795,59 @@ public partial class MainWindow : Window
         {
             this.SkillsContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenAndSelect(skill.Info.FilePath)));
         }
+    }
+
+    // "Add new" on SkillsGroupHeader (personal skills) - always valid, unlike the project-level
+    // equivalent below, since ~/.claude/skills always resolves regardless of session state.
+    private void OnAddNewPersonalSkillClick(object sender, RoutedEventArgs e)
+    {
+        if (!this.TryNavigateAwayFromActiveEditor())
+        {
+            return;
+        }
+
+        // Sentinel that isn't any of ContextTree/SkillsList/OutputStylesList, so every branch of
+        // ClearOtherContextSelections runs - a blank new skill shouldn't leave a stale selection
+        // highlighted in any of the three stacked controls.
+        this.ClearOtherContextSelections(this);
+
+        this.PlaceholderText.Visibility = Visibility.Collapsed;
+        this.ErrorText.Visibility = Visibility.Collapsed;
+        this.MarkdownEditor.Visibility = Visibility.Collapsed;
+        this.SkillEditor.Visibility = Visibility.Visible;
+        this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelSkill;
+        this.SkillEditor.LoadNewDocument(ClaudeSkillsDirectory.Root);
+    }
+
+    // ContextMenuOpening (not a static XAML menu, unlike the personal-skills header above) since
+    // whether "Add new" is even offered depends on the current session's cwd resolving to a repo.
+    private void OnSessionSkillsGroupHeaderContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.SessionSkillsGroupHeaderContextMenu.Items.Clear();
+
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session && SessionScopedPaths.TryGetRepoRoot(session.WorkingDirectory, out var repoRoot))
+        {
+            this.SessionSkillsGroupHeaderContextMenu.Items.Add(CreateMenuItem("Add new", () => this.OnAddNewProjectSkill(repoRoot)));
+        }
+        else
+        {
+            this.SessionSkillsGroupHeaderContextMenu.Items.Add(CreateMenuItem("No repository found", () => { }, enabled: false));
+        }
+    }
+
+    private void OnAddNewProjectSkill(string repoRoot)
+    {
+        if (!this.TryNavigateAwayFromActiveEditor())
+        {
+            return;
+        }
+
+        this.ClearSessionSubSectionSelections();
+        this.HideActiveSessionPane();
+        this.MarkdownEditor.Visibility = Visibility.Collapsed;
+        this.SkillEditor.Visibility = Visibility.Visible;
+        this.activeMarkdownEditorSource = MarkdownEditorSource.SessionSkill;
+        this.SkillEditor.LoadNewDocument(Path.Combine(repoRoot, ".claude", "skills"));
     }
 
     private void OnOutputStylesListMouseRightButtonDown(object sender, MouseButtonEventArgs e)

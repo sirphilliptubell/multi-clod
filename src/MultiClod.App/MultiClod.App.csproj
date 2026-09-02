@@ -71,6 +71,9 @@
          The upstream repo (Kryptos-FR/markdig.wpf) was archived in 2024, but 0.5.0.1 is the
          last published version and still works fine on net8.0-windows. -->
     <PackageReference Include="Markdig.Wpf" Version="0.5.0.1" />
+    <!-- Real YAML parsing for SKILL.md frontmatter (Skills\SkillFrontmatterYaml.cs) - preserves
+         key order and list/nested values, unlike the hand-rolled scanner it replaces. -->
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
   <ItemGroup>

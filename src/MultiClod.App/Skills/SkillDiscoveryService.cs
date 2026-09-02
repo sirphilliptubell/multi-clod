@@ -36,8 +36,8 @@ internal sealed class SkillDiscoveryService
                 continue;
             }
 
-            var (name, description) = SkillFrontmatterParser.Parse(File.ReadAllText(skillFile));
-            results.Add(new SkillInfo(name ?? Path.GetFileName(skillDirectory), description, skillFile));
+            SkillFrontmatterYaml.TryParse(File.ReadAllText(skillFile), out var frontmatter, out _, out _);
+            results.Add(new SkillInfo(frontmatter?.Name ?? Path.GetFileName(skillDirectory), frontmatter?.Description, skillFile));
         }
 
         results.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));

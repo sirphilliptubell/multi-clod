@@ -1,0 +1,169 @@
+<UserControl x:Class="MultiClod.App.Skills.SkillEditor.SkillEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mde="clr-namespace:MultiClod.App.MarkdownEditor"
+             mc:Ignorable="d"
+             PreviewKeyDown="OnPreviewKeyDown">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/MultiClod.App;component/MarkdownEditor/ToggleSwitchStyle.xaml" />
+                <ResourceDictionary Source="/MultiClod.App;component/Styles/FormControlStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar: Save isn't scoped to the body pane's own edit/view toggle the way
+             MarkdownEditorView's is - a left-panel-only or frontmatter-only change is just as
+             saveable as a body edit, so this stays visible and just enables/disables on dirty. -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="8">
+            <Button x:Name="SaveButton" Content="Save" Width="60" IsEnabled="False" Click="OnSaveClick" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: structured controls for the curated fields. Each value control's Foreground
+                 is set in code-behind (UpdateFieldDimming) to Theme.Brush.SecondaryForeground when
+                 its current value equals that field's default (and therefore won't be written to
+                 frontmatter), or Theme.Brush.PrimaryForeground otherwise. Every field change
+                 syncs into the frontmatter YAML textarea immediately (see SkillEditorView.xaml.cs
+                 class remarks) rather than waiting for the field to lose focus. -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,0,1,0">
+                <StackPanel x:Name="LeftPanel" Margin="16">
+
+                    <!-- Only visible for a not-yet-saved skill (SkillDocument.IsNew) - the folder
+                         name is required (no default to fall back to) and, once saved, is shown
+                         read-only elsewhere; there is no rename support in this version. -->
+                    <StackPanel x:Name="FolderNamePanel" Margin="0,0,0,16">
+                        <TextBlock Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4">
+                            <Run Text="Skill folder name" />
+                            <Run Text=" *" Foreground="{DynamicResource Theme.Brush.Error}" />
+                        </TextBlock>
+                        <TextBox x:Name="FolderNameBox" TextChanged="OnFolderNameTextChanged"
+                                 ToolTip="The directory this skill is saved under - becomes its /skill-name command. Lowercase letters, digits, and hyphens only; required, and can't be changed after the first save." />
+                        <TextBlock x:Name="FolderNameErrorText" Foreground="{DynamicResource Theme.Brush.Error}" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed" />
+                        <TextBlock Text="Lowercase letters, digits, and hyphens only - becomes the /skill-name command."
+                                   Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <!-- Shown instead of the structured fields when the file's frontmatter didn't
+                         parse as a YAML mapping - see SkillDocument.RawFrontmatterBlock. -->
+                    <TextBlock x:Name="StructuralFallbackNotice" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,0,0,16" Visibility="Collapsed"
+                               Text="This skill's frontmatter isn't a plain YAML mapping (invalid YAML, or a list/value instead of key: value pairs), so it can only be hand-edited as raw text on the right." />
+
+                    <StackPanel x:Name="StructuredFieldsPanel">
+                        <TextBlock Text="Name" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <TextBox x:Name="NameBox" TextChanged="OnTextFieldChanging"
+                                 ToolTip="Display name shown in skill listings. Leave blank to use the folder name (shown as a placeholder) - doesn't change the /skill-name command itself." />
+                        <Separator Opacity="0" Height="12" />
+
+                        <TextBlock Margin="0,0,0,4">
+                            <Run Text="Description" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                            <Run Text=" (recommended)" Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" />
+                        </TextBlock>
+                        <TextBox x:Name="DescriptionBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" MaxHeight="120"
+                                 VerticalScrollBarVisibility="Auto" TextChanged="OnTextFieldChanging"
+                                 ToolTip="What the skill does and when to use it. Claude reads this to decide when to load the skill automatically - put the main use case first." />
+                        <Separator Opacity="0" Height="12" />
+
+                        <TextBlock Text="When to use" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <TextBox x:Name="WhenToUseBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" MaxHeight="120"
+                                 VerticalScrollBarVisibility="Auto" TextChanged="OnTextFieldChanging"
+                                 ToolTip="Extra trigger phrases or example requests, appended after Description when Claude decides whether to load this skill." />
+                        <Separator Opacity="0" Height="12" />
+
+                        <TextBlock Text="Argument hint" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <TextBox x:Name="ArgumentHintBox" TextChanged="OnTextFieldChanging"
+                                 ToolTip="Hint shown during autocomplete for this skill's expected arguments, e.g. [issue-number] or [filename] [format]." />
+                        <Separator Opacity="0" Height="12" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12"
+                                    ToolTip="When on, only you can invoke this skill (typing /name) - Claude won't load it automatically. Use for actions with side effects you want to control the timing of.">
+                            <ToggleButton x:Name="DisableModelInvocationToggle" Style="{StaticResource ToggleSwitchStyle}"
+                                          Click="OnToggleFieldCommitted" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock x:Name="DisableModelInvocationLabel" Text="Disable model invocation" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12"
+                                    ToolTip="When off, only Claude can invoke this skill - it's hidden from the / menu and can't be run by typing /name. Use for background knowledge, not user-facing actions.">
+                            <ToggleButton x:Name="UserInvocableToggle" Style="{StaticResource ToggleSwitchStyle}"
+                                          Click="OnToggleFieldCommitted" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock x:Name="UserInvocableLabel" Text="User invocable" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Text="Allowed tools" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <TextBox x:Name="AllowedToolsBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" MaxHeight="100"
+                                 VerticalScrollBarVisibility="Auto" TextChanged="OnTextFieldChanging"
+                                 ToolTip="Tools Claude can use without asking permission while this skill is active. The grant clears when you send your next message." />
+                        <TextBlock Text="Space or comma separated." Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" Margin="0,2,0,12" />
+
+                        <TextBlock Text="Disallowed tools" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <TextBox x:Name="DisallowedToolsBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" MaxHeight="100"
+                                 VerticalScrollBarVisibility="Auto" TextChanged="OnTextFieldChanging"
+                                 ToolTip="Tools removed from Claude's available pool while this skill is active. The restriction clears when you send your next message." />
+                        <TextBlock Text="Space or comma separated." Foreground="{DynamicResource Theme.Brush.SecondaryForeground}" FontSize="11" Margin="0,2,0,12" />
+
+                        <TextBlock Text="Model" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <ComboBox x:Name="ModelCombo" IsEditable="True" SelectionChanged="OnFieldCommitted" KeyUp="OnFieldCommitted"
+                                  ToolTip="Model to use while this skill is active - accepts an alias (sonnet/opus/haiku/fable), 'inherit' to explicitly keep the current model, or a fully-qualified model ID. Pick the blank first item to clear it. Overrides only the current turn." />
+                        <Separator Opacity="0" Height="12" />
+
+                        <TextBlock Text="Effort" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" Margin="0,0,0,4" />
+                        <ComboBox x:Name="EffortCombo" SelectionChanged="OnFieldCommitted"
+                                  ToolTip="Effort level to use while this skill is active, overriding the session's effort level for this turn. Pick the blank first item to clear it.">
+                            <ComboBoxItem Content="" />
+                            <ComboBoxItem Content="low" />
+                            <ComboBoxItem Content="medium" />
+                            <ComboBoxItem Content="high" />
+                            <ComboBoxItem Content="xhigh" />
+                            <ComboBoxItem Content="max" />
+                        </ComboBox>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right: the entire frontmatter YAML (recognized + unrecognized keys, combined) on
+                 top, the body markdown below. -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="220" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBox x:Name="FrontmatterYamlBox" Grid.Row="0" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                             FontFamily="Consolas" FontSize="13" Background="{DynamicResource Theme.Brush.WindowBackground}"
+                             Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" CaretBrush="{DynamicResource Theme.Brush.PrimaryForeground}"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" BorderThickness="0" Padding="12"
+                             TextChanged="OnFrontmatterYamlTextChanged"
+                             ToolTip="The skill's complete frontmatter YAML, including any keys not shown on the left. Valid edits here update the fields on the left immediately; invalid YAML shows an error below and blocks Save until fixed." />
+                    <TextBlock x:Name="FrontmatterYamlErrorText" Grid.Row="1" Foreground="{DynamicResource Theme.Brush.Error}" FontSize="11"
+                               TextWrapping="Wrap" Padding="12,4" Visibility="Collapsed" />
+                </Grid>
+
+                <Border Grid.Row="0" VerticalAlignment="Bottom" Height="1" Background="{DynamicResource Theme.Brush.Border}" />
+
+                <mde:MarkdownRenderEditControl x:Name="BodyRenderEdit" Grid.Row="1" DirtyChanged="OnBodyRenderEditDirtyChanged"
+                                                ToolTip="The skill's body markdown - the instructions Claude follows when the skill runs. Toggle Edit to switch between the rendered preview and raw text." />
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

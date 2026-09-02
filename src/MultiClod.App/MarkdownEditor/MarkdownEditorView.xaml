@@ -3,35 +3,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:MultiClod.App.MarkdownEditor"
              mc:Ignorable="d"
              PreviewKeyDown="OnPreviewKeyDown">
-    <UserControl.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="ToggleSwitchStyle.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
-    </UserControl.Resources>
-    <Grid Background="{DynamicResource Theme.Brush.WindowBackground}">
-        <!--
-            View mode (default) and edit mode are mutually exclusive by Visibility, same rule as
-            MainWindow's own canvas children - Document is only ever replaced, never the control
-            itself, so nothing here needs add/remove semantics.
-        -->
-        <FlowDocumentScrollViewer x:Name="MarkdownViewer" Background="{DynamicResource Theme.Brush.WindowBackground}" Padding="16" />
-
-        <TextBox x:Name="RawEditor" Visibility="Collapsed" Background="{DynamicResource Theme.Brush.WindowBackground}" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}"
-                 CaretBrush="{DynamicResource Theme.Brush.PrimaryForeground}" FontFamily="Consolas" FontSize="13"
-                 AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
-                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                 BorderThickness="0" Padding="16"
-                 TextChanged="OnRawEditorTextChanged" />
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8">
-            <Button x:Name="SaveButton" Content="Save" Width="60" Margin="0,0,12,0"
-                    Visibility="Collapsed" IsEnabled="False" Click="OnSaveClick" />
-            <TextBlock Text="Edit" Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" VerticalAlignment="Center" Margin="0,0,6,0" />
-            <ToggleButton x:Name="EditToggle" Style="{StaticResource ToggleSwitchStyle}" Click="OnEditToggleClick" />
-        </StackPanel>
+    <Grid>
+        <local:MarkdownRenderEditControl x:Name="RenderEdit" DirtyChanged="OnRenderEditDirtyChanged" EditModeChanged="OnRenderEditEditModeChanged">
+            <local:MarkdownRenderEditControl.LeadingToolbarContent>
+                <!-- Not x:Name'd - a Button set via a sibling control's content property lands in
+                     that control's own NameScope, not this file's, so MarkdownEditorView.xaml.cs
+                     grabs it as saveButton via RenderEdit.LeadingToolbarContent instead. -->
+                <Button Content="Save" Width="60" Margin="0,0,12,0"
+                        Visibility="Collapsed" IsEnabled="False" Click="OnSaveClick" />
+            </local:MarkdownRenderEditControl.LeadingToolbarContent>
+        </local:MarkdownRenderEditControl>
     </Grid>
 </UserControl>

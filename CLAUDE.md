@@ -10,8 +10,12 @@ Skills (a panel with a `ContextTree` showing the resolved user-level `CLAUDE.md`
 cycle-detected nodes - above two collapsible accordion groups: Skills (the existing flat list of
 personal Claude Code skills from `~/.claude/skills`) and Output Styles (personal output styles from
 `~/.claude/output-styles`), each group's header dimming when it has nothing to show; selecting a
-tree node, skill, or output style shows it in a shared `MarkdownEditorView` canvas, which renders
-`SKILL.md`/`CLAUDE.md`/output-style markdown and can switch to a raw-text editor), and Settings (no
+tree node or output style shows it in a shared `MarkdownEditorView` canvas, which renders
+`CLAUDE.md`/output-style markdown and can switch to a raw-text editor, while selecting a skill (or
+right-clicking a Skills heading to add a new one) opens `Skills\SkillEditor\SkillEditorView`
+instead - structured controls for a skill's frontmatter on the left, the full frontmatter YAML and
+body markdown on the right; see https://code.claude.com/docs/en/skills.md for the frontmatter
+fields/behavior that editor is modeling), and Settings (no
 tree/list panel - just a canvas of persisted toggles/fields, e.g. default root folder, git worktree
 usage, Claude permission mode, and app theme). Releases are packaged
 with Velopack (`vpk`) and published as GitHub Releases on this repo (via

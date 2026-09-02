@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MultiClod.App"
         xmlns:mde="clr-namespace:MultiClod.App.MarkdownEditor"
+        xmlns:se="clr-namespace:MultiClod.App.Skills.SkillEditor"
         xmlns:context="clr-namespace:MultiClod.App.Context"
         xmlns:settings="clr-namespace:MultiClod.App.Settings"
         xmlns:costs="clr-namespace:MultiClod.App.Costs"
@@ -730,6 +731,14 @@
                     <Border x:Name="SkillsGroupHeader" Height="28" Background="Transparent" Cursor="Hand"
                             BorderBrush="{DynamicResource Theme.Brush.Border}" BorderThickness="0,1,0,0"
                             MouseLeftButtonDown="OnSkillsGroupHeaderClick">
+                        <!-- Static content, unlike the per-item "Explore to" menus below - always
+                             valid (~/.claude/skills always resolves), so no ContextMenuOpening
+                             plumbing is needed. -->
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Add new" Click="OnAddNewPersonalSkillClick" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
                             <Polyline x:Name="SkillsGroupChevron" Points="0,0 5,4 0,8" Width="6" Height="8" VerticalAlignment="Center"
                                       Stroke="{DynamicResource Theme.Brush.SecondaryForeground}" StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent">
@@ -935,6 +944,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" MaxHeight="220" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
 
@@ -955,7 +965,25 @@
 
                                 <Border Grid.Row="1" Height="1" Margin="4,4" Background="{DynamicResource Theme.Brush.Border}" />
 
-                                <ListBox x:Name="SessionSkillsList" Grid.Row="2" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
+                                <!--
+                                    Static "Skills" label - unlike the rail panel's SkillsGroupHeader,
+                                    this one never collapses anything (SessionSkillsList always shows
+                                    below it), it just exists to host the right-click "Add new" menu
+                                    for a project-level skill. Its content is dynamic (gated on
+                                    whether the current session's cwd resolves to a repo) so it uses
+                                    ContextMenuOpening rather than a static XAML-declared menu - see
+                                    OnSessionSkillsGroupHeaderContextMenuOpening.
+                                -->
+                                <Border Grid.Row="2" Height="24" Background="Transparent"
+                                        ContextMenuOpening="OnSessionSkillsGroupHeaderContextMenuOpening">
+                                    <Border.ContextMenu>
+                                        <ContextMenu x:Name="SessionSkillsGroupHeaderContextMenu" />
+                                    </Border.ContextMenu>
+                                    <TextBlock Text="Skills" Margin="6,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Theme.Brush.PrimaryForeground}" />
+                                </Border>
+
+                                <ListBox x:Name="SessionSkillsList" Grid.Row="3" Background="{DynamicResource Theme.Brush.WindowBackground}" BorderThickness="0"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                          SelectionChanged="OnSessionSkillsListSelectionChanged">
                                     <ListBox.ItemTemplate>
@@ -1106,8 +1134,11 @@
                 -->
                 <Grid x:Name="SessionViewHost" />
 
-                <!-- Rendered/edited markdown for the currently selected skill or Context node - see MarkdownEditor\MarkdownEditorView. -->
+                <!-- Rendered/edited markdown for the currently selected Context node - see MarkdownEditor\MarkdownEditorView. -->
                 <mde:MarkdownEditorView x:Name="MarkdownEditor" Visibility="Collapsed" />
+
+                <!-- Structured editor for the currently selected (or newly-created) skill - see Skills\SkillEditor\SkillEditorView. -->
+                <se:SkillEditorView x:Name="SkillEditor" Visibility="Collapsed" />
 
                 <!-- App preferences - see Settings\SettingsView. -->
                 <settings:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
