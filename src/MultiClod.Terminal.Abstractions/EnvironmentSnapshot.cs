@@ -79,7 +79,25 @@ public static class EnvironmentSnapshot
                 continue;
             }
 
-            result[key] = (string?)entry.Value ?? string.Empty;
+            var value = (string?)entry.Value ?? string.Empty;
+
+            // PATH is special-cased: Windows itself builds a fresh process's PATH by concatenating
+            // Machine then User Path (System Properties' own combined view), not by one replacing
+            // the other. Overlaying User after Machine here with a flat assignment would otherwise
+            // silently drop every Machine-only PATH entry (e.g. C:\Program Files\dotnet\, which is
+            // Machine-scoped while global dotnet tool shims live under the User-scoped
+            // %USERPROFILE%\.dotnet\tools) - breaking anything a hook shells out to that isn't also
+            // on the User PATH.
+            if (string.Equals(key, "Path", StringComparison.OrdinalIgnoreCase))
+            {
+                result[key] = result.TryGetValue(key, out var existing) && existing.Length > 0
+                    ? $"{existing};{value}"
+                    : value;
+            }
+            else
+            {
+                result[key] = value;
+            }
         }
     }
 }
