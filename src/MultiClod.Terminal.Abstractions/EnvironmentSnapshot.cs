@@ -52,6 +52,34 @@ public static class EnvironmentSnapshot
             result[key] = (string?)entry.Value ?? string.Empty;
         }
 
+        // Windows fixes a process's own environment block (the loop above) at process-creation
+        // time - it's never updated from the registry afterward, so a long-running MultiClod.App
+        // instance would otherwise keep launching new sessions with whatever System/User env vars
+        // were current when *it* started, even after the user edits them (System Properties, or
+        // setx) without restarting the app. EnvironmentVariableTarget.Machine/User read straight
+        // from the registry on every call, so overlaying them here (User last, matching Windows'
+        // own precedence when it builds a fresh process's environment block) picks up edits made
+        // to persisted env vars at launch time instead of a stale copy from whenever this process
+        // started. Only covers persisted (System/User) vars, not ephemeral ones set in a parent
+        // shell that isn't itself reread - the same limitation a freshly-launched process would
+        // have.
+        OverlayTarget(result, EnvironmentVariableTarget.Machine);
+        OverlayTarget(result, EnvironmentVariableTarget.User);
+
         return result;
+    }
+
+    private static void OverlayTarget(Dictionary<string, string> result, EnvironmentVariableTarget target)
+    {
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables(target))
+        {
+            var key = (string)entry.Key;
+            if (EditorInjectedVariablesToStrip.Contains(key))
+            {
+                continue;
+            }
+
+            result[key] = (string?)entry.Value ?? string.Empty;
+        }
     }
 }
