@@ -306,6 +306,7 @@ public partial class MainWindow : Window
         // OnMarkdownEditorDocumentSaved) - saving a Skill doesn't need the Context tree rebuilt.
         this.MarkdownEditor.DocumentSaved += this.OnMarkdownEditorDocumentSaved;
         this.SkillEditor.DocumentSaved += this.OnSkillEditorDocumentSaved;
+        this.OutputStyleEditor.DocumentSaved += this.OnOutputStyleEditorDocumentSaved;
 
         // Seeds the live-bindable flag every cost badge across the app reads from - see
         // CostDisplaySettings' remarks. Every later toggle flows through OnShowCostsChanged instead.
@@ -1074,6 +1075,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        this.RebuildOutputStylesList();
+    }
+
+    // Split out from EnsureOutputStylesLoaded so an output style saved/created through
+    // OutputStyleEditor (see OnOutputStyleEditorDocumentSaved) can force a rescan instead of only
+    // ever loading once per run, unlike EnsureOutputStylesLoaded's own once-per-launch convention
+    // for the read-only case.
+    private void RebuildOutputStylesList()
+    {
         var outputStyles = new OutputStyleDiscoveryService().ScanPersonalOutputStyles();
         this.outputStyleNodes = new ObservableCollection<OutputStyleNodeViewModel>(outputStyles.Select(s => new OutputStyleNodeViewModel(s)));
         this.OutputStylesList.ItemsSource = this.outputStyleNodes;
@@ -1121,6 +1131,28 @@ public partial class MainWindow : Window
                 if (this.TabStrip.SelectedItem is SessionNodeViewModel session)
                 {
                     this.RebuildSessionContextSkills(session.WorkingDirectory);
+                    this.RefreshSessionSubPanelForActiveTab();
+                }
+
+                break;
+        }
+    }
+
+    // Mirrors OnSkillEditorDocumentSaved - refreshes whichever list (personal or project-level)
+    // the saved/newly-created output style belongs to, and re-checks the affected session's
+    // SessionPanelAvailability so its rail icon un-greys immediately if this was that session's
+    // first output style.
+    private void OnOutputStyleEditorDocumentSaved(object? sender, string filePath)
+    {
+        switch (this.activeMarkdownEditorSource)
+        {
+            case MarkdownEditorSource.TopLevelOutputStyle:
+                this.RebuildOutputStylesList();
+                break;
+            case MarkdownEditorSource.SessionOutputStyle:
+                if (this.TabStrip.SelectedItem is SessionNodeViewModel outputStyleSession)
+                {
+                    this.RebuildSessionOutputStyles(outputStyleSession.WorkingDirectory);
                     this.RefreshSessionSubPanelForActiveTab();
                 }
 
@@ -1288,6 +1320,7 @@ public partial class MainWindow : Window
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.SkillEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelContext;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
@@ -1297,6 +1330,7 @@ public partial class MainWindow : Window
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Collapsed;
             this.SkillEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelSkill;
             this.SkillEditor.LoadDocument(node.Info.FilePath);
@@ -1306,9 +1340,10 @@ public partial class MainWindow : Window
             this.PlaceholderText.Visibility = Visibility.Collapsed;
             this.ErrorText.Visibility = Visibility.Collapsed;
             this.SkillEditor.Visibility = Visibility.Collapsed;
-            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelOutputStyle;
-            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(outputStyleNode.Info.FilePath, outputStyleNode.Info.Name));
+            this.OutputStyleEditor.LoadDocument(outputStyleNode.Info.FilePath);
         }
         else
         {
@@ -1349,19 +1384,26 @@ public partial class MainWindow : Window
     private bool IsShowingSessionScopedDocument =>
         this.activeMarkdownEditorSource is MarkdownEditorSource.SessionMemory or MarkdownEditorSource.SessionContext or MarkdownEditorSource.SessionSkill or MarkdownEditorSource.SessionOutputStyle;
 
-    // Skills now show in the separate SkillEditor control rather than the shared MarkdownEditor -
-    // these three let every existing navigate-away/hide call site stay a single call regardless of
-    // which of the two controls activeMarkdownEditorSource says is actually showing.
+    // Skills/Output Styles now show in their own separate editor controls rather than the shared
+    // MarkdownEditor - these let every existing navigate-away/hide call site stay a single call
+    // regardless of which of the three controls activeMarkdownEditorSource says is actually
+    // showing.
     private bool IsActiveEditorSkill =>
         this.activeMarkdownEditorSource is MarkdownEditorSource.TopLevelSkill or MarkdownEditorSource.SessionSkill;
 
+    private bool IsActiveEditorOutputStyle =>
+        this.activeMarkdownEditorSource is MarkdownEditorSource.TopLevelOutputStyle or MarkdownEditorSource.SessionOutputStyle;
+
     private bool TryNavigateAwayFromActiveEditor() =>
-        this.IsActiveEditorSkill ? this.SkillEditor.TryNavigateAway() : this.MarkdownEditor.TryNavigateAway();
+        this.IsActiveEditorSkill ? this.SkillEditor.TryNavigateAway()
+        : this.IsActiveEditorOutputStyle ? this.OutputStyleEditor.TryNavigateAway()
+        : this.MarkdownEditor.TryNavigateAway();
 
     private void HideActiveDocumentEditors()
     {
         this.MarkdownEditor.Visibility = Visibility.Collapsed;
         this.SkillEditor.Visibility = Visibility.Collapsed;
+        this.OutputStyleEditor.Visibility = Visibility.Collapsed;
     }
 
     // Recomputes memories/context-skills availability for the newly foreground session, dims the
@@ -1736,6 +1778,7 @@ public partial class MainWindow : Window
         {
             this.HideActiveSessionPane();
             this.SkillEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionMemory;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(memoryNode.FilePath, memoryNode.Name));
@@ -1744,6 +1787,7 @@ public partial class MainWindow : Window
         {
             this.HideActiveSessionPane();
             this.SkillEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Collapsed;
             this.MarkdownEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionContext;
             this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(contextNode.ResolvedPath, contextNode.Name));
@@ -1752,6 +1796,7 @@ public partial class MainWindow : Window
         {
             this.HideActiveSessionPane();
             this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Collapsed;
             this.SkillEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionSkill;
             this.SkillEditor.LoadDocument(skillNode.Info.FilePath);
@@ -1760,9 +1805,10 @@ public partial class MainWindow : Window
         {
             this.HideActiveSessionPane();
             this.SkillEditor.Visibility = Visibility.Collapsed;
-            this.MarkdownEditor.Visibility = Visibility.Visible;
+            this.MarkdownEditor.Visibility = Visibility.Collapsed;
+            this.OutputStyleEditor.Visibility = Visibility.Visible;
             this.activeMarkdownEditorSource = MarkdownEditorSource.SessionOutputStyle;
-            this.MarkdownEditor.LoadDocument(new MarkdownEditorTarget(outputStyleNode.Info.FilePath, outputStyleNode.Info.Name));
+            this.OutputStyleEditor.LoadDocument(outputStyleNode.Info.FilePath);
         }
         else
         {
@@ -1870,6 +1916,63 @@ public partial class MainWindow : Window
         {
             this.OutputStylesContextMenu.Items.Add(CreateMenuItem("Explore to", () => WindowsExplorer.OpenAndSelect(outputStyle.Info.FilePath)));
         }
+    }
+
+    // "Add new" on OutputStylesGroupHeader (personal output styles) - always valid, unlike the
+    // project-level equivalent below, since ~/.claude/output-styles always resolves regardless of
+    // session state. Mirrors OnAddNewPersonalSkillClick.
+    private void OnAddNewPersonalOutputStyleClick(object sender, RoutedEventArgs e)
+    {
+        if (!this.TryNavigateAwayFromActiveEditor())
+        {
+            return;
+        }
+
+        // Sentinel that isn't any of ContextTree/SkillsList/OutputStylesList, so every branch of
+        // ClearOtherContextSelections runs - a blank new output style shouldn't leave a stale
+        // selection highlighted in any of the three stacked controls.
+        this.ClearOtherContextSelections(this);
+
+        this.PlaceholderText.Visibility = Visibility.Collapsed;
+        this.ErrorText.Visibility = Visibility.Collapsed;
+        this.MarkdownEditor.Visibility = Visibility.Collapsed;
+        this.SkillEditor.Visibility = Visibility.Collapsed;
+        this.OutputStyleEditor.Visibility = Visibility.Visible;
+        this.activeMarkdownEditorSource = MarkdownEditorSource.TopLevelOutputStyle;
+        this.OutputStyleEditor.LoadNewDocument(ClaudeOutputStylesDirectory.Root);
+    }
+
+    // ContextMenuOpening (not a static XAML menu, unlike the personal-output-styles header above)
+    // since whether "Add new" is even offered depends on the current session's cwd resolving to a
+    // repo. Mirrors OnSessionSkillsGroupHeaderContextMenuOpening.
+    private void OnSessionOutputStylesGroupHeaderContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        this.SessionOutputStylesGroupHeaderContextMenu.Items.Clear();
+
+        if (this.TabStrip.SelectedItem is SessionNodeViewModel session && SessionScopedPaths.TryGetRepoRoot(session.WorkingDirectory, out var repoRoot))
+        {
+            this.SessionOutputStylesGroupHeaderContextMenu.Items.Add(CreateMenuItem("Add new", () => this.OnAddNewProjectOutputStyle(repoRoot)));
+        }
+        else
+        {
+            this.SessionOutputStylesGroupHeaderContextMenu.Items.Add(CreateMenuItem("No repository found", () => { }, enabled: false));
+        }
+    }
+
+    private void OnAddNewProjectOutputStyle(string repoRoot)
+    {
+        if (!this.TryNavigateAwayFromActiveEditor())
+        {
+            return;
+        }
+
+        this.ClearSessionSubSectionSelections();
+        this.HideActiveSessionPane();
+        this.MarkdownEditor.Visibility = Visibility.Collapsed;
+        this.SkillEditor.Visibility = Visibility.Collapsed;
+        this.OutputStyleEditor.Visibility = Visibility.Visible;
+        this.activeMarkdownEditorSource = MarkdownEditorSource.SessionOutputStyle;
+        this.OutputStyleEditor.LoadNewDocument(Path.Combine(repoRoot, ".claude", "output-styles"));
     }
 
     private void OnContextTreeMouseRightButtonDown(object sender, MouseButtonEventArgs e)

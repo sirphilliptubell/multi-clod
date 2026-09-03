@@ -1,5 +1,4 @@
 using System.IO;
-using MultiClod.App.Skills;
 
 namespace MultiClod.App.OutputStyles;
 
@@ -34,7 +33,7 @@ internal sealed class OutputStyleDiscoveryService
         var results = new List<OutputStyleInfo>();
         foreach (var file in Directory.EnumerateFiles(this.rootDirectory, "*" + OutputStyleFileExtension))
         {
-            SkillFrontmatterYaml.TryParse(File.ReadAllText(file), out var frontmatter, out _, out _);
+            OutputStyleFrontmatterYaml.TryParse(File.ReadAllText(file), out var frontmatter, out _, out _);
             results.Add(new OutputStyleInfo(frontmatter?.Name ?? Path.GetFileNameWithoutExtension(file), frontmatter?.Description, file));
         }
 
